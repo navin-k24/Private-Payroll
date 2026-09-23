@@ -138,9 +138,80 @@ The Compact compiler (`compactc 0.31.1`) processes `contract/contracts/private-p
 - **Circuit Transcripts:** Raw witness evaluation occurs off-chain; zero-knowledge proofs verify invariants without disclosing private numbers.
 
 ### 5. What is Still Not Implemented
-- **Transaction Balancing & Proving:** Full balancing through `connectedAPI.balanceTx()` and client-side proof generation with local prover / prover server.
-- **Live Contract Invocation:** Submitting verified transactions via MidnightJS `submitCallTx`.
+- **Live Contract Invocation:** Submitting verified transactions via MidnightJS `submitCallTx` or `deployContract`.
 - **Replacing Legacy UI:** The legacy Stellar payment console remains intact and operational until the full Private Payroll UI workflow is connected.
+
+---
+
+## MidnightJS Provider Architecture
+
+The MidnightJS provider stack (`lib/midnight/providers.ts` and `lib/midnight/session.ts`) provides the complete runtime foundation needed for transaction synthesis, zero-knowledge proof generation, client-side encryption, and ledger synchronization.
+
+```
++-------------------------------------------------------------------------+
+|                       Private Payroll Session                           |
+|                       (lib/midnight/session.ts)                         |
++-------------------------------------------------------------------------+
+                                     |
+               +---------------------+---------------------+
+               |                                           |
+               v                                           v
++-------------------------------+             +---------------------------+
+|      Client-Side Privacy      |             |     Lace Wallet Bridge    |
++-------------------------------+             +---------------------------+
+| 1. privateStateProvider       |             | 5. walletProvider         |
+|    - LevelDB local storage    |             |    - balanceUnsealedTx    |
+|    - AES-256 encrypted        |             |    - Coin/Enc public keys |
+|    - Holds salary amounts     |             | 6. midnightProvider       |
+| 2. zkConfigProvider           |             |    - submitTransaction    |
+|    - Loads verify_salary.zkir |             |    - Relays to network    |
+| 3. proofProvider              |             +---------------------------+
+|    - HTTP proof server client |                          |
+|    - Synthesizes ZK proof     |                          v
++-------------------------------+             +---------------------------+
+               |                              |    Network Infrastructure |
+               +----------------------------->| 4. publicDataProvider     |
+                                              |    - Apollo GraphQL indexer|
+                                              |    - WebSocket state feed |
+                                              +---------------------------+
+```
+
+### 1. Purpose of Each Provider
+1. **`privateStateProvider` (`levelPrivateStateProvider`):** Manages local, client-side encrypted storage for contract private states (such as private salary amounts and commitments). Stores data under account-scoped LevelDB namespaces without transmitting plaintext sensitive data over the network.
+2. **`publicDataProvider` (`indexerPublicDataProvider`):** Connects to the Midnight GraphQL indexer and WebSocket subscription feeds to query contract deployment state, observe on-chain state updates, and track block heights and transaction confirmations.
+3. **`zkConfigProvider` (`FetchZkConfigProvider`):** Resolves zero-knowledge circuit artifacts—including the intermediate representation (`verify_salary.zkir`), prover keys, and verifier keys generated during Compact contract compilation.
+4. **`proofProvider` (`httpClientProofProvider`):** Communicates with the Midnight proof server (local or remote daemon) over HTTP to generate zero-knowledge Halo2 proofs for unproven transactions, verifying contract circuit constraints off-chain.
+5. **`walletProvider` (`createWalletProvider`):** Bridges the Midnight Lace `ConnectedAPI` to the MidnightJS `WalletProvider` interface. Supplies shielded coin and encryption public keys and delegates transaction fee balancing to `connectedAPI.balanceUnsealedTransaction`.
+6. **`midnightProvider` (`createMidnightProvider`):** Isolates transaction submission logic, relaying finalized, balanced transactions to the Midnight network via `connectedAPI.submitTransaction` and resolving the transaction identifier.
+
+### 2. Privacy Boundaries: Private vs. Public Data
+- **Private Data (Stays Strictly Client-Side):**
+  - Employee salary figures and confidential split ratios.
+  - Private storage encryption keys and passwords.
+  - Witness inputs and intermediate witness values during circuit execution.
+  - Unproven transaction payloads containing raw shielded coin information.
+- **Public Data (Retrieved from Indexer Layer):**
+  - Contract deployment transaction records and public contract addresses.
+  - On-chain public ledger counters (`verification_count`).
+  - Unshielded balances, transaction statuses, and block inclusion receipts.
+  - Zswap public ledger events and state hashes.
+
+### 3. ZK Artifacts and Proving Architecture
+- **Artifact Location:** Compiled artifacts are generated by the Compact toolchain (`contract/compile.mjs`) into `contract/compiled/zkir/verify_salary.zkir` and companion contract metadata in `contract/compiled/compiler/contract-info.json`.
+- **Artifact Retrieval:** In web applications, `FetchZkConfigProvider` retrieves `.zkir`, `.prover`, and `.verifier` artifacts from the application's `/zk` static endpoint or configured base URL on demand.
+- **Proof Generation:** Proof synthesis occurs off-chain via the HTTP proof server client (`httpClientProofProvider`). Private witness values are consumed in memory by the prover to generate cryptographic zero-knowledge proofs. The resulting proof is included in the transaction without revealing the underlying salary numbers.
+
+### 4. Wallet Provider Bridging with Midnight Lace
+- The wallet bridge delegates balancing to `connectedAPI.balanceUnsealedTransaction(txHex, { payFees: true })`.
+- Cryptographic keys (`getCoinPublicKey()` and `getEncryptionPublicKey()`) are resolved synchronously from the shielded address bundle returned upon connecting to Lace.
+- Transaction submission is cleanly decoupled into `midnightProvider.submitTx()`, invoking `connectedAPI.submitTransaction(txHex)`.
+
+### 5. Provider Lifecycle and Cleanup Guarantees
+- **No Side-Effects on Import:** Importing `lib/midnight/providers.ts` or `lib/midnight/session.ts` does not initiate network connections, open sockets, or create background workers.
+- **Controlled Error Handling:** Provider instantiation validates required indexer and proof-server configurations, throwing explicit, actionable errors if endpoints are missing.
+- **Automated Rollback & Cleanup:** If initialization fails midway through assembly, all previously opened resources are terminated via registered cleanup hooks before re-throwing the primary error.
+- **Disposal Hook:** The constructed `PayrollProviders` bundle exposes a `dispose()` function, allowing the UI and session lifecycle managers to cleanly release subscriptions and network resources on disconnect or unmount.
+
 
 
 

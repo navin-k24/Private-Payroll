@@ -2,19 +2,25 @@
  * Contract session binding architecture for Midnight Private Payroll.
  *
  * Prepares the session configuration, private state containers, and
- * contract-binding types for future integration with Midnight Lace wallet
- * and the Midnight network indexer/prover pipeline.
+ * contract-binding types for integration with Midnight Lace wallet
+ * and the Midnight network indexer/prover provider pipeline.
  *
- * NOTE: Network synchronization, Lace wallet connectors, and transaction submission
- * are deferred to subsequent migration phases.
+ * NOTE: Importing this module does NOT initiate any network connections or side-effects.
+ * Providers and network synchronization are only initialized when explicit session functions are called.
  */
 
+import type { ConnectedAPI } from "@midnight-ntwrk/dapp-connector-api";
 import type {
   PayrollPrivateState,
   PayrollWitnesses,
   PrivatePayrollContract,
 } from "./contract.ts";
 import { createPayrollContract, createPayrollWitnesses } from "./contract.ts";
+import type {
+  CreatePayrollProvidersOptions,
+  PayrollProviders,
+} from "./providers.ts";
+import { createPayrollProviders } from "./providers.ts";
 
 /**
  * Configuration options required to locate and bind a deployed Private Payroll contract.
@@ -36,10 +42,9 @@ export type PayrollSessionConfig = {
  */
 export type PayrollSessionStatus = "uninitialized" | "configured" | "ready";
 
-import type { ConnectedAPI } from "@midnight-ntwrk/dapp-connector-api";
-
 /**
- * In-memory session state model tracking contract bindings, wallet connection, and local private state.
+ * In-memory session state model tracking contract bindings, wallet connection,
+ * MidnightJS providers, and local private state.
  */
 export type PayrollSessionState = {
   readonly status: PayrollSessionStatus;
@@ -47,6 +52,7 @@ export type PayrollSessionState = {
   readonly privateState: PayrollPrivateState;
   readonly contract?: PrivatePayrollContract;
   readonly connectedAPI?: ConnectedAPI;
+  readonly providers?: PayrollProviders;
 };
 
 /**
@@ -108,3 +114,42 @@ export function attachConnectedWallet(
   };
 }
 
+/**
+ * Attaches an active MidnightJS provider bundle to the session state.
+ */
+export function attachPayrollProviders(
+  session: PayrollSessionState,
+  providers: PayrollProviders,
+): PayrollSessionState {
+  return {
+    ...session,
+    providers,
+    status: "ready",
+  };
+}
+
+/**
+ * Initializes a provider-backed session from a connected wallet.
+ * Connects the wallet connector to MidnightJS providers without deploying or executing contracts.
+ *
+ * @param session - The active session state.
+ * @param connectedAPI - Connected wallet connector API from Midnight Lace.
+ * @param options - Additional provider options (endpoints, custom providers, etc.).
+ */
+export async function initializeProviderSession(
+  session: PayrollSessionState,
+  connectedAPI: ConnectedAPI,
+  options?: Omit<CreatePayrollProvidersOptions, "connectedAPI">,
+): Promise<PayrollSessionState> {
+  const providers = await createPayrollProviders({
+    ...options,
+    connectedAPI,
+  });
+
+  return {
+    ...session,
+    connectedAPI,
+    providers,
+    status: "ready",
+  };
+}

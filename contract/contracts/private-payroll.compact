@@ -1,0 +1,50 @@
+pragma language_version >= 0.23.0;
+
+import CompactStandardLibrary;
+
+/**
+ * ============================================================================
+ * Midnight Private Payroll - Level 3 Core Contract
+ * ============================================================================
+ *
+ * Privacy Model & Boundaries:
+ *
+ * 1. PUBLIC STATE:
+ *    - `verification_count`: Stored directly on-chain on the Midnight public ledger.
+ *      Tracks the total count of successfully verified and authorized payroll events.
+ *      Visible to all network observers, indexers, and blockchain explorers.
+ *
+ * 2. PRIVATE WITNESS INPUT:
+ *    - `get_salary_amount()`: Injected strictly off-chain by the user/organization
+ *      who executes the circuit. The raw value (e.g. employee's private pay amount)
+ *      enters the Zero-Knowledge proving system as a private witness.
+ *
+ * 3. WHAT THE CIRCUIT PROVES:
+ *    - The prover possesses a valid non-zero salary amount: `salary > 0`.
+ *    - The salary is within the organization's maximum cap: `salary <= max_allowed_salary`.
+ *    - The proof is mathematically verified without ever revealing the underlying value.
+ *
+ * 4. WHAT IS DELIBERATELY NOT WRITTEN TO PUBLIC LEDGER:
+ *    - The exact salary amount is NEVER stored in ledger state.
+ *    - Observers learn only that a valid payroll check took place and the global
+ *      verification counter was incremented by 1.
+ */
+
+// Public ledger state: Total count of verified payroll operations
+export ledger verification_count: Counter;
+
+// Private witness function: retrieves the private salary amount from the client
+witness get_salary_amount(): Uint<64>;
+
+// Public entrypoint circuit: validates the private salary against payroll constraints
+export circuit verify_salary(max_allowed_salary: Uint<64>): [] {
+    // 1. Ingest private salary via witness into the ZK circuit
+    const salary = get_salary_amount();
+
+    // 2. Enforce zero-knowledge validation constraints
+    assert(salary > 0, "Salary amount must be strictly greater than zero");
+    assert(salary <= max_allowed_salary, "Salary amount exceeds maximum payroll limit");
+
+    // 3. Update public ledger state: increment the verified counter by 1
+    verification_count.increment(1);
+}

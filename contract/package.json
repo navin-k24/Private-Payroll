@@ -3,11 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "main": "compiled/index.js",
-  "types": "compiled/index.d.ts",
+  "main": "compiled/contract/index.js",
+  "types": "compiled/contract/index.d.ts",
   "scripts": {
-    "compact": "compact compile contracts/payroll.compact compiled",
-    "compact:wasm": "compact compile --backend wasm contracts/payroll.compact compiled",
+    "compile": "node compile.mjs",
     "build": "tsc --build",
     "test": "node --test"
   },

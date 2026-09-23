@@ -1,0 +1,8 @@
+{
+  "version": 3,
+  "file": "index.js",
+  "sourceRoot": "../../contracts/",
+  "sources": ["private-payroll.compact"],
+  "names": [],
+  "mappings": ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;EAAA;;;;;;;;;;;;;MAuCA,AAAA,aAUC;;;;;cAV4B,oBAA4B;;;;;;;;;;;;;;;;;;yCAA5B,oBAA4B;;;;;;;;;+CAA5B,oBAA4B;;;OAUxD;;;;GACA;EAlDD;;;;;;;;;;;;;;;;;;;;;;;;;;;;;IAiCA;;;;;;;;;yEAA0C;;;;;;;GAiBzC;EAdD,AAAA,oBAAsC;;0DAAtC,iBAAsC;;;;;;;;;;;;;;GAAA;EAGtC,AAAA,gBAUC,4BAV4B,oBAA4B;UAE/C,QAA4B;4BAG3B,QAAM;;4BACN,QAAM,IAAI,oBAAkB;;UAGnC,KAAkB;IAAlB;;;;;;;;;;6FAAA,KAAkB;;;;wEAAA;;GACrB;;;;;;;;;;;;;;;;IAhBD;qCAAA;;;;;;;;;;;0GAA0C;KAAA;;;;;;;;;;;;"
+}

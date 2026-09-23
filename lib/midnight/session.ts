@@ -36,14 +36,17 @@ export type PayrollSessionConfig = {
  */
 export type PayrollSessionStatus = "uninitialized" | "configured" | "ready";
 
+import type { ConnectedAPI } from "@midnight-ntwrk/dapp-connector-api";
+
 /**
- * In-memory session state model tracking contract bindings and local private state.
+ * In-memory session state model tracking contract bindings, wallet connection, and local private state.
  */
 export type PayrollSessionState = {
   readonly status: PayrollSessionStatus;
   readonly config: PayrollSessionConfig;
   readonly privateState: PayrollPrivateState;
   readonly contract?: PrivatePayrollContract;
+  readonly connectedAPI?: ConnectedAPI;
 };
 
 /**
@@ -91,3 +94,17 @@ export function initializePayrollSession(
     contract,
   };
 }
+
+/**
+ * Attaches an active ConnectedAPI session from Midnight Lace to the session state.
+ */
+export function attachConnectedWallet(
+  session: PayrollSessionState,
+  connectedAPI: ConnectedAPI,
+): PayrollSessionState {
+  return {
+    ...session,
+    connectedAPI,
+  };
+}
+

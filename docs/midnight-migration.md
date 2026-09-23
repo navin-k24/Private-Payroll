@@ -106,9 +106,41 @@ The Compact compiler (`compactc 0.31.1`) processes `contract/contracts/private-p
 - **MidnightJS Compatibility:** Exports `DeployedPayrollContract` (bound to `@midnight-ntwrk/midnight-js-contracts`) for future on-chain deployment and transaction pipelines.
 
 ### 4. What is Still Missing Before Live Wallet/Network Usage
-- **Lace Wallet Connector:** Injection and detection of `window.midnight?.mnLace` via `@midnight-ntwrk/dapp-connector-api`.
 - **Prover & Indexer Providers:** Configuration of remote or local Midnight proof server (`http://localhost:6300`) and indexer endpoints.
 - **On-Chain Deployment / Address Binding:** Deploying the compiled contract to Midnight Testnet or resolving an existing deployed contract address.
 - **Frontend Action Binding:** Replacing the legacy Stellar payment form with the Private Payroll console and proof status indicators.
+
+---
+
+## Midnight Lace Wallet Integration
+
+### 1. How the Wallet is Detected
+- The browser extension injects its metadata into `window.midnight` upon initialization.
+- The wallet adapter (`lib/midnight/wallet.ts`) inspects `window.midnight` for known keys (`mnLace`, `lace`) or queries registered entries matching RDNS (`io.midnight.lace`) adhering to the `@midnight-ntwrk/dapp-connector-api` specification.
+- If no extension is present, `isMidnightWalletAvailable()` returns `false`, allowing the UI to present installation guidance rather than throwing an unhandled exception.
+
+### 2. How Connection Works
+- The application initiates connection via `connectMidnightWallet({ networkId })`.
+- This calls the standard `initialAPI.connect(networkId)` method (where `networkId` defaults to `testnet-02`), prompting the user inside Midnight Lace to review and authorize the connection.
+- If rejected by the user, the connector throws a `DAppConnectorAPIError` with code `Rejected`, which is cleanly intercepted and mapped to a polite rejection alert without altering application connection state.
+- Upon authorization, Lace returns a typed `ConnectedAPI` session instance.
+
+### 3. What Information the dApp Receives
+- **Shielded Address:** Bech32m-formatted address used for private interactions and balance commitments.
+- **Shielded Public Keys:** Coin public key and encryption public key for proof outputs and shielded transactions.
+- **Unshielded Address:** Public Bech32m address for unshielded token operations.
+- **Dust Address:** Dedicated Dust balance address.
+- **InitialAPI Metadata:** Wallet display name, icon URI, and connector API version.
+
+### 4. What Remains Local and Private
+- **Private Keys & Seed Phrases:** Never leave the browser extension sandbox.
+- **Private Payroll State:** Employee salary amounts and split ratios are held in `PayrollPrivateState` and only accessed locally by witness providers during proof generation.
+- **Circuit Transcripts:** Raw witness evaluation occurs off-chain; zero-knowledge proofs verify invariants without disclosing private numbers.
+
+### 5. What is Still Not Implemented
+- **Transaction Balancing & Proving:** Full balancing through `connectedAPI.balanceTx()` and client-side proof generation with local prover / prover server.
+- **Live Contract Invocation:** Submitting verified transactions via MidnightJS `submitCallTx`.
+- **Replacing Legacy UI:** The legacy Stellar payment console remains intact and operational until the full Private Payroll UI workflow is connected.
+
 
 

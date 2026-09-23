@@ -1,0 +1,11 @@
+node_modules
+.next
+.git
+.vercel
+**/target
+coverage
+*.log
+*.xdr
+*.out
+.env
+.env.*

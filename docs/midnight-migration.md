@@ -54,3 +54,30 @@ Private-Payroll/
 ## Temporary Preservation Status
 
 All existing Stellar/Soroban modules, tests, and configurations remain untouched during this scaffolding step to ensure ongoing build stability and zero disruption to the baseline pipeline. Subsequent steps will introduce the Compact contract, Midnight SDK bindings, and updated UI workflows.
+
+---
+
+## Selected Midnight Development Stack & Toolchain
+
+### 1. Selected Stack & Versions
+- **Compact Toolchain:** `compact` CLI pinned to compiler version `0.26.0` (specified via `.compact-version` and `contract/.compact-version`).
+- **Compact Runtime:** `@midnight-ntwrk/compact-runtime` (`^0.19.0`)
+- **MidnightJS Contracts SDK:** `@midnight-ntwrk/midnight-js-contracts` (`^4.1.1`)
+- **Midnight DApp Connector API:** `@midnight-ntwrk/dapp-connector-api` (`^4.0.1`)
+- **Midnight Ledger Engine:** `@midnight-ntwrk/ledger` (`^4.0.0`)
+
+### 2. Selection Rationale & Target Network
+- **Target Network:** Midnight Testnet (`Testnet-02` / public Testnet).
+- **Toolchain Alignment:** Version `0.26.0` of the Compact compiler matches the stable on-chain runtime (`v4.0.0-rc.3` / `compact-runtime 0.19.0`) deployed to Midnight Testnet. Higher preview versions (such as `0.27.x`) are designated for developer preview networks and introduce ledger breaking changes incompatible with Testnet-02.
+- **Client & Prover Compatibility:** MidnightJS `4.1.x` and DApp Connector `4.0.x` represent the stable official release branch for client-side proving and Lace wallet communications on Testnet without unstable alpha/beta breaking changes.
+
+### 3. Dependency Inventory
+- **Added Midnight Dependencies:**
+  - `@midnight-ntwrk/compact-runtime@^0.19.0`: Executes zero-knowledge circuits and witnesses compiled from `.compact` smart contracts.
+  - `@midnight-ntwrk/midnight-js-contracts@^4.1.1`: Provides contract deployment, interaction pipeline, and state synchronization.
+  - `@midnight-ntwrk/dapp-connector-api@^4.0.1`: Exposes Lace browser wallet integration types and window provider hooks.
+  - `@midnight-ntwrk/ledger@^4.0.0`: Core ledger cryptographic models and balance commitment structures.
+- **Intentionally Retained Stellar Dependencies:**
+  - `@stellar/stellar-sdk@^16.2.0`: Retained temporarily so that the working Stellar payment engine and transaction builder remain functional during the migration phase.
+  - `@stellar/freighter-api@^6.0.1`: Retained temporarily to keep legacy wallet connect flows intact until Midnight Lace wallet flows are wired up.
+

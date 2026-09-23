@@ -48,3 +48,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# midnight
+/.compact/
+/contract/dist/
+*.compact-cache

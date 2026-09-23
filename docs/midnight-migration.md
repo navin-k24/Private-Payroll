@@ -81,3 +81,34 @@ All existing Stellar/Soroban modules, tests, and configurations remain untouched
   - `@stellar/stellar-sdk@^16.2.0`: Retained temporarily so that the working Stellar payment engine and transaction builder remain functional during the migration phase.
   - `@stellar/freighter-api@^6.0.1`: Retained temporarily to keep legacy wallet connect flows intact until Midnight Lace wallet flows are wired up.
 
+---
+
+## MidnightJS Contract Integration
+
+### 1. Where the Compiled Contract Lives
+The Compact compiler (`compactc 0.31.1`) processes `contract/contracts/private-payroll.compact` and generates the runtime artifacts in:
+- `contract/compiled/contract/index.js`: Compiled JavaScript runtime implementing the circuit handlers, state transitions, and witness injection logic.
+- `contract/compiled/contract/index.d.ts`: TypeScript typings defining `Contract`, `Ledger`, `Witnesses`, `Circuits`, and `pureCircuits`.
+- `contract/compiled/zkir/verify_salary.zkir`: Zero-Knowledge Intermediate Representation of the `verify_salary` circuit for proving key generation.
+- `contract/compiled/compiler/contract-info.json`: Build metadata and contract hashes.
+
+### 2. How the Application Imports It
+- `contract/index.ts` re-exports the compiled contract exports directly:
+  ```ts
+  export * from "./compiled/contract/index.js";
+  ```
+- The application integration layer (`lib/midnight/contract.ts`) consumes these compiled definitions directly, avoiding manual recreation of contract types.
+
+### 3. Responsibilities of `lib/midnight/contract.ts`
+- **Application-Facing Contract Typing:** Binds `Contract<PayrollPrivateState, PayrollWitnesses>` into strongly typed aliases (`PrivatePayrollContract`, `PayrollWitnesses`, `PayrollCircuits`, `PayrollLedger`).
+- **Witness Implementation:** `createPayrollWitnesses(salaryAmount)` feeds the private salary value into the off-chain witness provider without exposing it to public ledger storage.
+- **Factory Helpers:** Provides `createPayrollContract()` and `getPayrollLedgerState()` to cleanly construct and inspect the contract in application components.
+- **MidnightJS Compatibility:** Exports `DeployedPayrollContract` (bound to `@midnight-ntwrk/midnight-js-contracts`) for future on-chain deployment and transaction pipelines.
+
+### 4. What is Still Missing Before Live Wallet/Network Usage
+- **Lace Wallet Connector:** Injection and detection of `window.midnight?.mnLace` via `@midnight-ntwrk/dapp-connector-api`.
+- **Prover & Indexer Providers:** Configuration of remote or local Midnight proof server (`http://localhost:6300`) and indexer endpoints.
+- **On-Chain Deployment / Address Binding:** Deploying the compiled contract to Midnight Testnet or resolving an existing deployed contract address.
+- **Frontend Action Binding:** Replacing the legacy Stellar payment form with the Private Payroll console and proof status indicators.
+
+

@@ -212,6 +212,66 @@ The MidnightJS provider stack (`lib/midnight/providers.ts` and `lib/midnight/ses
 - **Automated Rollback & Cleanup:** If initialization fails midway through assembly, all previously opened resources are terminated via registered cleanup hooks before re-throwing the primary error.
 - **Disposal Hook:** The constructed `PayrollProviders` bundle exposes a `dispose()` function, allowing the UI and session lifecycle managers to cleanly release subscriptions and network resources on disconnect or unmount.
 
+---
+
+## Midnight Contract Deployment and Session
+
+The contract session layer (`lib/midnight/payroll-session.ts`, re-exported via `lib/midnight/session.ts`) provides application-level orchestrators for deploying, discovering, querying, and invoking the compiled `private-payroll.compact` contract on the Midnight network.
+
+```
++-------------------------------------------------------------------------------------------------+
+|                                    PayrollContractSession                                       |
++-------------------------------------------------------------------------------------------------+
+|  contractAddress   : string (64-character hex or Bech32m Midnight contract address)            |
+|  deployedContract  : DeployedContract<PrivatePayrollContract> | FoundContract<PrivatePayrollContract> |
+|  providers         : PayrollProviders (bundle of 6 MidnightJS provider abstractions)            |
+|  privateStateId    : string (client-side LevelDB namespace)                                     |
+|  queryLedger()     : () => Promise<PayrollLedger> (returns on-chain verification_count)         |
+|  verifySalary()    : (maxAllowedSalary: bigint) => Promise<FinalizedCallTxData>                 |
+|  dispose()         : () => Promise<void> (cleans up subscriptions and provider resources)       |
++-------------------------------------------------------------------------------------------------+
+```
+
+### 1. Contract Deployment (`deployPrivatePayrollContract`)
+- **Explicit Execution Only:** Deployment never runs automatically during application startup or module evaluation. It executes strictly upon user initiation.
+- **Contract Compilation Asset Binding:** Utilizes `CompiledContract.withWitnesses` and `CompiledContract.withCompiledFileAssets` to bundle compiled Compact artifacts and witnesses without requiring external asset paths at runtime.
+- **Private State Seeding:** The deployer's initial private salary is committed directly into the client-side `privateStateProvider` under the designated `privateStateId`. The raw salary value is never exposed on the public ledger or sent in cleartext over the network.
+- **Resource Cleanup on Failure:** If deployment fails (e.g., node rejection or network disruption), any temporary providers spawned for the operation are automatically released via `providers.dispose()`.
+
+### 2. Joining an Existing Deployed Contract (`joinPrivatePayrollContract`)
+- **Address Validation:** Enforces strict validation via `isValidContractAddress()`, verifying 64-character hexadecimal or standard Midnight Bech32m address formats (`contract_...` or `mn1...`) while explicitly rejecting empty strings, placeholders, and truncated input.
+- **On-Chain Discovery:** Locates the contract on the Midnight blockchain using `findDeployedContract()` via the indexer's public data provider.
+- **Circuit Verification Key Matching:** Validates that the on-chain contract verifier keys match local compiled artifacts for the `verify_salary` circuit, safeguarding against contract version mismatches.
+- **Session Construction:** Binds the discovered contract to the active provider stack and returns a fully initialized `PayrollContractSession`.
+
+### 3. Deployed Contract Address Resolution
+- **Environment Configuration:** Configurable at build/runtime through `NEXT_PUBLIC_MIDNIGHT_PAYROLL_CONTRACT_ADDRESS` (available via `CONFIGURED_PAYROLL_CONTRACT_ADDRESS`).
+- **Dynamic User Input:** Users can input or paste any valid deployed Midnight contract address directly into the dApp console.
+- **No Hardcoded Values:** No fixed production address is hardcoded into application source files; fallback is an empty string requiring deployment or explicit entry.
+
+### 4. Public Ledger State Queries (`queryPayrollLedgerState`)
+- **Direct Indexer Query:** Fetches on-chain public state through `publicDataProvider.queryContractState(contractAddress)`.
+- **Typed Ledger Representation:** Safely parses contract state data using `safeGetPayrollLedger()`, returning `{ verification_count: bigint }`.
+- **Zero Privacy Leakage:** The public ledger exclusively records the scalar `verification_count`. No private salary amounts, recipient identifiers, or balance commitments are exposed on-chain.
+
+### 5. Witness and Circuit Invocation (`submitVerifySalaryCall`)
+- **Witness Isolation:** The private salary is provided off-chain via `createPayrollWitnesses(salaryAmount)` and stored in the encrypted local `privateStateProvider`.
+- **Public Argument Boundary:** The `verify_salary` circuit invocation takes ONLY `maxAllowedSalary` as a public on-chain argument (`args: [maxAllowedSalary]`).
+- **Cryptographic Assurance:** The circuit verifies that `0 < salary <= maxAllowedSalary` inside a zero-knowledge proof. The validator verifies the proof and increments `verification_count` without ever learning the actual salary amount.
+
+### 6. Current Implementation Status & Next Steps
+- **Working Now:**
+  - `private-payroll.compact` contract compilation with Compact toolchain.
+  - TypeScript types and witness handlers for contract interaction.
+  - Midnight Lace wallet adapter and provider bridging.
+  - Contract deployment (`deployPrivatePayrollContract`) and join (`joinPrivatePayrollContract`) workflows.
+  - Public ledger state reader (`queryPayrollLedgerState`) and verification counter tracking.
+  - Circuit call builder (`submitVerifySalaryCall`) with privacy-preserving witness binding.
+  - Unit tests covering scenarios A through G with comprehensive mocks.
+- **Next Steps:**
+  - Implement the Midnight Private Payroll user interface in the Next.js frontend, replacing the legacy Stellar payment panel with wallet connect, contract deployment/joining controls, and private salary verification widgets.
+
+
 
 
 

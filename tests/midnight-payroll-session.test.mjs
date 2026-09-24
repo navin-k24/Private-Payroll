@@ -5,6 +5,7 @@ import {
   joinPrivatePayrollContract,
   queryPayrollLedgerState,
   submitVerifySalaryCall,
+  submitRecordPrivateSplitCall,
   safeGetPayrollLedger,
   isValidContractAddress,
   mapPayrollSessionError,
@@ -349,7 +350,12 @@ test("Scenario F: Private salary is supplied through private/witness mechanism, 
   );
   assert.equal("salaryAmount" in publicLedger, false);
   assert.equal("salary" in publicLedger, false);
-  assert.deepEqual(Object.keys(publicLedger), ["verification_count"]);
+  assert.deepEqual(Object.keys(publicLedger), [
+    "verification_count",
+    "split_count",
+    "payroll_cycle",
+    "split_commitments",
+  ]);
 });
 
 test("Scenario G: Provider/session cleanup and error mapping on deployment or join failure", async () => {
@@ -397,7 +403,79 @@ test("Scenario G: Provider/session cleanup and error mapping on deployment or jo
       "Salary verification circuit execution failed",
     ),
   );
+  assert.ok(
+    mapPayrollSessionError("Duplicate payroll split: commitment already recorded").includes(
+      "Duplicate payroll split detected",
+    ),
+  );
 
   // 3. Configured contract address exported constant is a string
   assert.equal(typeof CONFIGURED_PAYROLL_CONTRACT_ADDRESS, "string");
 });
+
+test("Scenario H: record_private_split call passes only maxAllowedSalary publicly and stores private state", async () => {
+  const providers = createMockPayrollProviders();
+  let capturedCircuitId = null;
+  let capturedArgs = null;
+
+  const mockSubmitCallTx = async (prov, opts) => {
+    capturedCircuitId = opts.circuitId;
+    capturedArgs = opts.args;
+    return {
+      public: {
+        txId: "tx_mock_split_001",
+        status: "succeedEntirely",
+        result: new Uint8Array(32).fill(7),
+      },
+    };
+  };
+
+  const maxAllowedSalary = 50000n;
+  const privateSalary = 42000n;
+  const splitNonce = new Uint8Array(32).fill(99);
+
+  await submitRecordPrivateSplitCall(providers, {
+    contractAddress: MOCK_VALID_CONTRACT_ADDRESS,
+    maxAllowedSalary,
+    privateSalary,
+    splitNonce,
+    submitCallTxFn: mockSubmitCallTx,
+  });
+
+  // Verify on-chain public parameters
+  assert.equal(capturedCircuitId, "record_private_split");
+  assert.deepEqual(capturedArgs, [maxAllowedSalary]);
+
+  // Verify private state storage
+  const storedPrivateState = await providers.privateStateProvider.get(DEFAULT_PRIVATE_STATE_ID);
+  assert.equal(storedPrivateState.salaryAmount, privateSalary);
+  assert.deepEqual(storedPrivateState.splitNonce, splitNonce);
+});
+
+test("Scenario I: record_private_split input validation enforces positive bounds", async () => {
+  const providers = createMockPayrollProviders();
+
+  // Zero maxAllowedSalary rejected
+  await assert.rejects(
+    async () => {
+      await submitRecordPrivateSplitCall(providers, {
+        contractAddress: MOCK_VALID_CONTRACT_ADDRESS,
+        maxAllowedSalary: 0n,
+      });
+    },
+    /greater than zero/i,
+  );
+
+  // Private salary exceeding max rejected
+  await assert.rejects(
+    async () => {
+      await submitRecordPrivateSplitCall(providers, {
+        contractAddress: MOCK_VALID_CONTRACT_ADDRESS,
+        maxAllowedSalary: 1000n,
+        privateSalary: 2000n,
+      });
+    },
+    /salary exceeds maximum/i,
+  );
+});
+

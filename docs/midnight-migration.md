@@ -319,6 +319,43 @@ The Midnight Private Payroll frontend (`components/private-payroll-dashboard.tsx
   6. `Verification successful`: Displays confirmed on-chain transaction ID, clears the private salary input field, and automatically refreshes `verification_count` from the public ledger.
 - **Error Mapping:** Clean error messages for invalid salary (`salary <= 0`), exceeded ceiling (`salary > maxAllowedSalary`), wallet rejection, or unreachable network endpoints without leaking sensitive numbers or stack traces.
 
+---
+
+## Step 11: Private Payroll / Splits Evolution
+
+### 1. Architectural Upgrade
+To fulfill the approved **Level 3 idea ("Private Payroll / Splits")**, the contract and session layer evolved from a single compliance verifier into a multi-record confidential payroll split application:
+
+1. **Commitment Set & Duplicate Prevention:**
+   The Compact contract introduces `split_commitments: Set<Bytes<32>>`. When `record_private_split` is called:
+   - A struct `PrivatePayrollSplit { salary: Uint<64>, nonce: Bytes<32> }` is hashed via `persistentHash<PrivatePayrollSplit>(split)`.
+   - The contract asserts `!split_commitments.member(commitment)`, preventing duplicate payouts or split re-submissions.
+   - The commitment is inserted into `split_commitments`.
+2. **Multi-Record Split Counter & Cycle Tracking:**
+   - `split_count`: Counter incremented upon each registered split.
+   - `payroll_cycle`: Counter tracking active distribution cycles.
+3. **Blinding Nonces & Witness Privacy:**
+   - The witness `get_split_nonce()` generates/ingests a cryptographically secure 32-byte salt.
+   - Nonce + salary ensures distinct commitments even if two employees receive identical salaries.
+   - Public circuit arguments consist solely of `max_allowed_salary: Uint<64>`. Raw salaries and blinding nonces are never submitted on-chain or published in block data.
+
+### 2. Public vs. Private Visibility Matrix
+| Data Item | Observer Visibility | Storage Location |
+| :--- | :--- | :--- |
+| **Split Count** | Public | Midnight Blockchain Ledger |
+| **Payroll Cycle** | Public | Midnight Blockchain Ledger |
+| **Split Commitments (`Set<Bytes<32>>`)** | Public | Midnight Blockchain Ledger |
+| **Verification Count** | Public | Midnight Blockchain Ledger |
+| **Salary Policy Ceiling** | Public | Transaction Argument / Ledger Rule |
+| **Contract Address & Verifier Keys** | Public | Midnight Network State |
+| **Employee Split Figures** | **Private / Shielded** | Off-Chain Prover Witness Only |
+| **Blinding Salt / Nonce** | **Private / Shielded** | Client-Side Private Storage (`privateStateProvider`) |
+| **Proof Intermediate Wires** | **Private / Shielded** | Local ZK Proof Engine |
+
+### 3. Current Limitation
+On-chain automated token balance transfers are not yet automated on-chain. Current implementation provides end-to-end cryptographic payroll split validation, duplicate prevention, on-chain commitment registration, and cycle tracking. Direct token transfer integrations are slated for upcoming milestones.
+
+
 
 
 

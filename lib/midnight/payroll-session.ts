@@ -27,6 +27,8 @@ import type { PublicDataProvider } from "@midnight-ntwrk/midnight-js-types";
 import {
   Contract,
   createPayrollWitnesses,
+  generateSplitNonce,
+  bytesToHex,
   getPayrollLedgerState,
   type PrivatePayrollContract,
   type PayrollLedger,
@@ -45,7 +47,7 @@ export const CONFIGURED_PAYROLL_CONTRACT_ADDRESS: string =
   process.env.NEXT_PUBLIC_MIDNIGHT_PAYROLL_CONTRACT_ADDRESS?.trim() || "";
 
 import { isValidContractAddress } from "./dashboard-model.ts";
-export { isValidContractAddress };
+export { isValidContractAddress, bytesToHex };
 
 /**
  * Unified application contract session for an active Midnight Private Payroll deployment.
@@ -88,6 +90,20 @@ export type PayrollContractSession = {
     maxAllowedSalary: bigint,
     privateSalary?: bigint,
   ) => Promise<FinalizedCallTxData<PrivatePayrollContract, "verify_salary">>;
+
+  /**
+   * Prepares and submits a private payroll split circuit call.
+   * Proves salary constraints in ZK and commits a cryptographic split record on-chain.
+   *
+   * @param maxAllowedSalary - Maximum salary ceiling (public on-chain parameter).
+   * @param privateSalary - Optional employee private salary (injected into private state/witness).
+   * @param splitNonce - Optional 32-byte blinding factor / secret salt.
+   */
+  readonly recordPrivatePayrollSplit: (
+    maxAllowedSalary: bigint,
+    privateSalary?: bigint,
+    splitNonce?: Uint8Array,
+  ) => Promise<FinalizedCallTxData<PrivatePayrollContract, "record_private_split">>;
 
   /**
    * Releases network connections, indexer subscriptions, and session resources.
@@ -242,15 +258,27 @@ export function mapPayrollSessionError(error: unknown): string {
     return `Private Payroll deployment failed: ${rawMsg}`;
   }
   if (
+    msg.includes("duplicate payroll split") ||
+    msg.includes("duplicate split") ||
+    msg.includes("already recorded")
+  ) {
+    return "Duplicate payroll split detected: a record with this private commitment has already been registered on-chain.";
+  }
+  if (
     msg.includes("calltxfailederror") ||
     msg.includes("verify_salary")
   ) {
     return `Salary verification circuit execution failed: ${rawMsg}`;
   }
+  if (
+    msg.includes("record_private_split")
+  ) {
+    return `Private payroll split circuit execution failed: ${rawMsg}`;
+  }
 
   // Sanitize any remaining message so raw stack traces or internal numbers aren't exposed
   if (rawMsg.length > 200 || rawMsg.includes("\n") || rawMsg.includes(" at ")) {
-    return "Salary verification transaction failed during processing.";
+    return "Private payroll transaction failed during processing.";
   }
 
   return rawMsg || "Failed to process contract session operation.";
@@ -260,14 +288,38 @@ export function mapPayrollSessionError(error: unknown): string {
  * Safely extracts the public ledger state from contract state data.
  */
 export function safeGetPayrollLedger(data: unknown): PayrollLedger {
-  if (!data) return { verification_count: BigInt(0) };
-  if (typeof (data as { verification_count?: bigint }).verification_count === "bigint") {
-    return { verification_count: (data as { verification_count: bigint }).verification_count };
+  const defaultCommitments = {
+    isEmpty: () => true,
+    size: () => BigInt(0),
+    member: () => false,
+    [Symbol.iterator]: function* () {},
+  };
+
+  if (!data) {
+    return {
+      verification_count: BigInt(0),
+      split_count: BigInt(0),
+      payroll_cycle: BigInt(0),
+      split_commitments: defaultCommitments,
+    };
   }
+
   try {
-    return getPayrollLedgerState(data as Parameters<typeof getPayrollLedgerState>[0]);
+    const parsed = getPayrollLedgerState(data as Parameters<typeof getPayrollLedgerState>[0]);
+    return {
+      verification_count: parsed.verification_count ?? BigInt(0),
+      split_count: parsed.split_count ?? BigInt(0),
+      payroll_cycle: parsed.payroll_cycle ?? BigInt(0),
+      split_commitments: parsed.split_commitments ?? defaultCommitments,
+    };
   } catch {
-    return { verification_count: BigInt(0) };
+    const raw = data as Partial<PayrollLedger>;
+    return {
+      verification_count: typeof raw.verification_count === "bigint" ? raw.verification_count : BigInt(0),
+      split_count: typeof raw.split_count === "bigint" ? raw.split_count : BigInt(0),
+      payroll_cycle: typeof raw.payroll_cycle === "bigint" ? raw.payroll_cycle : BigInt(0),
+      split_commitments: raw.split_commitments ?? defaultCommitments,
+    };
   }
 }
 
@@ -294,9 +346,7 @@ export async function queryPayrollLedgerState(
   );
 
   if (!contractState || !contractState.data) {
-    return {
-      verification_count: BigInt(0),
-    };
+    return safeGetPayrollLedger(null);
   }
 
   return safeGetPayrollLedger(contractState.data);
@@ -367,6 +417,19 @@ export async function deployPrivatePayrollContract(
           contractAddress: deployedAddress,
           maxAllowedSalary,
           privateSalary: privateSalary !== undefined ? privateSalary : initialSalary,
+          privateStateId,
+          deployedContract: deployed,
+        }),
+      recordPrivatePayrollSplit: async (
+        maxAllowedSalary: bigint,
+        privateSalary?: bigint,
+        splitNonce?: Uint8Array,
+      ) =>
+        submitRecordPrivateSplitCall(providers, {
+          contractAddress: deployedAddress,
+          maxAllowedSalary,
+          privateSalary: privateSalary !== undefined ? privateSalary : initialSalary,
+          splitNonce,
           privateStateId,
           deployedContract: deployed,
         }),
@@ -456,6 +519,19 @@ export async function joinPrivatePayrollContract(
           contractAddress,
           maxAllowedSalary,
           privateSalary: privateSalary !== undefined ? privateSalary : options.initialSalary,
+          privateStateId,
+          deployedContract: found,
+        }),
+      recordPrivatePayrollSplit: async (
+        maxAllowedSalary: bigint,
+        privateSalary?: bigint,
+        splitNonce?: Uint8Array,
+      ) =>
+        submitRecordPrivateSplitCall(providers, {
+          contractAddress,
+          maxAllowedSalary,
+          privateSalary: privateSalary !== undefined ? privateSalary : options.initialSalary,
+          splitNonce,
           privateStateId,
           deployedContract: found,
         }),
@@ -559,6 +635,103 @@ export async function submitVerifySalaryCall(
   return await submitFn(providers, {
     compiledContract,
     circuitId: "verify_salary",
+    contractAddress: address as ContractAddress,
+    privateStateId,
+    args: [options.maxAllowedSalary],
+  });
+}
+
+/**
+ * Options for submitting a record_private_split circuit call.
+ */
+export type SubmitRecordPrivateSplitCallOptions = {
+  contractAddress: string;
+  maxAllowedSalary: bigint;
+  privateSalary?: bigint;
+  splitNonce?: Uint8Array;
+  privateStateId?: string;
+  deployedContract?:
+    | FoundContract<PrivatePayrollContract>
+    | DeployedContract<PrivatePayrollContract>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  submitCallTxFn?: (...args: any[]) => Promise<any>;
+};
+
+/**
+ * Prepares and submits a call to the `record_private_split` circuit.
+ *
+ * Privacy enforcement:
+ * - `maxAllowedSalary` is the SOLE public argument submitted on-chain.
+ * - Private salary and blinding nonce are ingested off-chain strictly via witness handlers.
+ * - The raw salary is never posted to the public ledger or logged.
+ * - Only the resulting 256-bit commitment is committed to `split_commitments`.
+ */
+export async function submitRecordPrivateSplitCall(
+  providers: PayrollProviders,
+  options: SubmitRecordPrivateSplitCallOptions,
+): Promise<FinalizedCallTxData<PrivatePayrollContract, "record_private_split">> {
+  const address = options.contractAddress?.trim();
+  if (!isValidContractAddress(address)) {
+    throw new Error(
+      `Invalid contract address: "${options.contractAddress}". Cannot execute record_private_split.`,
+    );
+  }
+
+  if (options.maxAllowedSalary <= BigInt(0)) {
+    throw new Error("Maximum allowed salary must be strictly greater than zero.");
+  }
+
+  if (options.privateSalary !== undefined) {
+    if (options.privateSalary <= BigInt(0)) {
+      throw new Error("salary must be positive");
+    }
+    if (options.privateSalary > options.maxAllowedSalary) {
+      throw new Error("salary exceeds maximum allowed");
+    }
+  }
+
+  const nonce = options.splitNonce || generateSplitNonce();
+  const privateStateId = options.privateStateId || DEFAULT_PRIVATE_STATE_ID;
+
+  // 1. Update the local private state container
+  providers.privateStateProvider.setContractAddress(address as ContractAddress);
+  const currentPrivateState =
+    (await providers.privateStateProvider.get(privateStateId)) || {};
+  await providers.privateStateProvider.set(privateStateId, {
+    ...currentPrivateState,
+    ...(options.privateSalary !== undefined
+      ? { salaryAmount: options.privateSalary }
+      : {}),
+    splitNonce: nonce,
+  });
+
+  // 2. If a deployedContract handle with callTx is already available, invoke it directly
+  if (options.deployedContract?.callTx?.record_private_split) {
+    return await options.deployedContract.callTx.record_private_split(
+      options.maxAllowedSalary,
+    );
+  }
+
+  // 3. Otherwise construct the circuit call options and submit via submitCallTx
+  const salaryToUse =
+    options.privateSalary ??
+    (currentPrivateState as { salaryAmount?: bigint }).salaryAmount ??
+    BigInt(0);
+  const witnesses = createPayrollWitnesses(salaryToUse, nonce);
+
+  const baseCompiled = CompiledContract.withWitnesses(
+    CompiledContract.make("private-payroll", Contract),
+    witnesses,
+  );
+  const compiledContract = CompiledContract.withCompiledFileAssets(
+    baseCompiled,
+    "contract/compiled",
+  );
+
+  const submitFn = options.submitCallTxFn || submitCallTx;
+  return await submitFn(providers, {
+    compiledContract,
+    circuitId: "record_private_split",
     contractAddress: address as ContractAddress,
     privateStateId,
     args: [options.maxAllowedSalary],

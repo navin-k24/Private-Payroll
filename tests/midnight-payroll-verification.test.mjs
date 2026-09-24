@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import {
   joinPrivatePayrollContract,
   submitVerifySalaryCall,
+  submitRecordPrivateSplitCall,
   mapPayrollSessionError,
 } from "../lib/midnight/payroll-session.ts";
 import {
@@ -50,10 +51,17 @@ function createMockPayrollProviders(overrides = {}) {
   if (overrides.initialVerificationCount !== undefined) {
     ledgerVerificationCount = overrides.initialVerificationCount;
   }
+  let ledgerSplitCount = overrides.initialSplitCount !== undefined ? overrides.initialSplitCount : 0n;
+  let ledgerPayrollCycle = overrides.initialPayrollCycle !== undefined ? overrides.initialPayrollCycle : 1n;
 
   const publicDataProvider = {
     queryContractState: async () => ({
-      data: { verification_count: ledgerVerificationCount },
+      data: {
+        verification_count: ledgerVerificationCount,
+        split_count: ledgerSplitCount,
+        payroll_cycle: ledgerPayrollCycle,
+        split_commitments: new Set(),
+      },
     }),
     watchForTxData: async () => ({
       status: "succeedEntirely",
@@ -109,7 +117,7 @@ function createMockPayrollProviders(overrides = {}) {
   };
 }
 
-function createMockDeployedContract(contractAddress, onVerifySalary) {
+function createMockDeployedContract(contractAddress, onVerifySalary, onRecordSplit) {
   return {
     deployTxData: {
       public: {
@@ -120,6 +128,13 @@ function createMockDeployedContract(contractAddress, onVerifySalary) {
     callTx: {
       verify_salary: onVerifySalary || (async () => ({
         public: { txId: "tx_mock_call_001", status: "succeedEntirely" },
+      })),
+      record_private_split: onRecordSplit || (async () => ({
+        public: {
+          txId: "tx_mock_split_001",
+          status: "succeedEntirely",
+          result: new Uint8Array(32).fill(1),
+        },
       })),
     },
     circuitMaintenanceTx: {},
@@ -436,3 +451,173 @@ test("Integration Scenario: Full mocked verification pipeline from wallet to led
   await session.dispose();
   assert.equal(mockProviders.isDisposed, true);
 });
+
+test("Test G: Private payroll split receives only maxAllowedSalary as public argument", async () => {
+  const providers = createMockPayrollProviders();
+  let capturedCircuitArgs = null;
+  let capturedCircuitId = null;
+
+  const mockSubmitCallTx = async (prov, opts) => {
+    capturedCircuitId = opts.circuitId;
+    capturedCircuitArgs = opts.args;
+    return {
+      public: {
+        txId: "tx_public_split_check_200",
+        status: "succeedEntirely",
+        result: new Uint8Array(32).fill(3),
+      },
+    };
+  };
+
+  const maxSalary = 25000n;
+  const privateSalary = 18000n;
+  const splitNonce = new Uint8Array(32).fill(42);
+
+  await submitRecordPrivateSplitCall(providers, {
+    contractAddress: MOCK_CONTRACT_ADDRESS,
+    maxAllowedSalary: maxSalary,
+    privateSalary,
+    splitNonce,
+    submitCallTxFn: mockSubmitCallTx,
+  });
+
+  // Public argument check: only maxAllowedSalary
+  assert.equal(capturedCircuitId, "record_private_split");
+  assert.deepEqual(capturedCircuitArgs, [maxSalary]);
+
+  // Private state check: salary and nonce stored off-chain
+  const storedState = await providers.privateStateProvider.get(DEFAULT_PRIVATE_STATE_ID);
+  assert.equal(storedState.salaryAmount, privateSalary);
+  assert.deepEqual(storedState.splitNonce, splitNonce);
+
+  // Witness check: get_salary_amount and get_split_nonce provide correct confidential values
+  const witnesses = createPayrollWitnesses(privateSalary, splitNonce);
+  const context = { privateState: storedState };
+  const [, extractedSalary] = witnesses.get_salary_amount(context);
+  const [, extractedNonce] = witnesses.get_split_nonce(context);
+  assert.equal(extractedSalary, privateSalary);
+  assert.deepEqual(extractedNonce, splitNonce);
+});
+
+test("Test H: Successful split triggers refresh/query of public split_count", async () => {
+  let queryCount = 0;
+  const providers = createMockPayrollProviders({
+    publicDataProvider: {
+      queryContractState: async () => {
+        queryCount += 1;
+        return {
+          data: {
+            verification_count: 1n,
+            split_count: BigInt(queryCount),
+            payroll_cycle: 1n,
+            split_commitments: new Set(),
+          },
+        };
+      },
+    },
+  });
+
+  const session = await joinPrivatePayrollContract({
+    contractAddress: MOCK_CONTRACT_ADDRESS,
+    providers,
+    findDeployedContractFn: async () =>
+      createMockDeployedContract(MOCK_CONTRACT_ADDRESS),
+  });
+
+  // Initial query
+  const initialLedger = await session.queryLedger();
+  assert.equal(initialLedger.split_count, 1n);
+
+  // Execute recordPrivatePayrollSplit
+  const splitResult = await session.recordPrivatePayrollSplit(15000n, 12000n);
+  assert.ok(splitResult.public.txId);
+
+  // Subsequent query reflects incremented on-chain counter
+  const refreshedLedger = await session.queryLedger();
+  assert.equal(refreshedLedger.split_count, 2n);
+  assert.equal(queryCount, 2);
+});
+
+test("Test I: Duplicate or failed split does not fake or manually increment split_count", async () => {
+  const currentSplitCount = 3n;
+  const providers = createMockPayrollProviders({
+    publicDataProvider: {
+      queryContractState: async () => ({
+        data: {
+          verification_count: 0n,
+          split_count: currentSplitCount,
+          payroll_cycle: 1n,
+          split_commitments: new Set(),
+        },
+      }),
+    },
+  });
+
+  const failingDeployedContract = createMockDeployedContract(
+    MOCK_CONTRACT_ADDRESS,
+    null,
+    async () => {
+      throw new Error("Duplicate payroll split: commitment already recorded");
+    },
+  );
+
+  const session = await joinPrivatePayrollContract({
+    contractAddress: MOCK_CONTRACT_ADDRESS,
+    providers,
+    findDeployedContractFn: async () => failingDeployedContract,
+  });
+
+  // Call should reject with duplicate error
+  await assert.rejects(
+    async () => {
+      await session.recordPrivatePayrollSplit(10000n, 8000n);
+    },
+    /Duplicate payroll split/i,
+  );
+
+  // Public ledger split_count must remain untouched at 3n
+  const ledger = await session.queryLedger();
+  assert.equal(ledger.split_count, 3n);
+});
+
+test("Test J: UI component provides distinct actions for Verify Salary and Record Private Split", async () => {
+  const dashboardSource = await readFile(
+    new URL("../components/private-payroll-dashboard.tsx", import.meta.url),
+    "utf8",
+  );
+
+  // Form input for split
+  assert.match(
+    dashboardSource,
+    /id="split-max-salary-input"/,
+    "Dashboard must provide split max salary input",
+  );
+  assert.match(
+    dashboardSource,
+    /id="split-private-salary-input"[^>]*type="password"/,
+    "Split private salary input must be protected with type=password",
+  );
+
+  // Split action button and handler
+  assert.match(
+    dashboardSource,
+    /onClick=\{handleRecordSplit\}/,
+    "Dashboard must wire handleRecordSplit to Record Private Split button",
+  );
+  assert.match(
+    dashboardSource,
+    /disabled=\{!canSubmitSplitAction\}/,
+    "Record Private Split button must be controlled by canSubmitSplitAction",
+  );
+
+  // Both distinct actions exist
+  assert.match(dashboardSource, /Record Private Payroll Split/);
+  assert.match(dashboardSource, /Private Salary Verification/);
+
+  // 4 Public cards exist in dashboard
+  assert.match(dashboardSource, /Payroll Cycle/);
+  assert.match(dashboardSource, /Private Splits Recorded/);
+  assert.match(dashboardSource, /Salary Policy Ceiling/);
+  assert.match(dashboardSource, /Verification Count/);
+});
+

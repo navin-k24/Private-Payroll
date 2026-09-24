@@ -4,7 +4,12 @@ import { readFile } from "node:fs/promises";
 import {
   validateContractAddressInput,
   formatVerificationCount,
+  formatSplitCount,
+  formatPayrollCycle,
   getDashboardStatusInfo,
+  getSplitPhaseLabel,
+  getSplitPhaseDescription,
+  canSubmitSplit,
   parseSalaryAmount,
   PRIVACY_MODEL_DETAILS,
 } from "../lib/midnight/dashboard-model.ts";
@@ -200,7 +205,12 @@ test("Test 5: Public verification_count loading, successful result, and indexer 
   // Querying mock public data provider returns real count
   const mockPublicDataProvider = {
     queryContractState: async () => ({
-      data: { verification_count: 9n },
+      data: {
+        verification_count: 9n,
+        split_count: 5n,
+        payroll_cycle: 2n,
+        split_commitments: new Set(),
+      },
     }),
   };
   const ledgerState = await queryPayrollLedgerState(
@@ -208,6 +218,8 @@ test("Test 5: Public verification_count loading, successful result, and indexer 
     VALID_HEX_ADDRESS,
   );
   assert.equal(ledgerState.verification_count, 9n);
+  assert.equal(ledgerState.split_count, 5n);
+  assert.equal(ledgerState.payroll_cycle, 2n);
 });
 
 test("Test 6: Session and provider cleanup guarantees", async () => {
@@ -318,3 +330,106 @@ test("Test 9: Privacy explanation integrity", () => {
   assert.match(PRIVACY_MODEL_DETAILS.explanation, /zero-knowledge/);
   assert.match(PRIVACY_MODEL_DETAILS.explanation, /witness/);
 });
+
+test("Test 10: Private split models, formatters, and phase labels", () => {
+  // Split count formatter
+  assert.equal(formatSplitCount(null), "—");
+  assert.equal(formatSplitCount(undefined), "—");
+  assert.equal(formatSplitCount(0n), "0");
+  assert.equal(formatSplitCount(12n), "12");
+
+  // Payroll cycle formatter
+  assert.equal(formatPayrollCycle(null), "—");
+  assert.equal(formatPayrollCycle(undefined), "—");
+  assert.equal(formatPayrollCycle(1n), "#1");
+  assert.equal(formatPayrollCycle(5n), "#5");
+
+  // Split phase labels
+  assert.equal(getSplitPhaseLabel("idle"), "Record Private Split");
+  assert.equal(getSplitPhaseLabel("preparing"), "Preparing private split");
+  assert.equal(getSplitPhaseLabel("proving"), "Generating proof");
+  assert.equal(getSplitPhaseLabel("approving"), "Waiting for wallet approval");
+  assert.equal(getSplitPhaseLabel("submitting"), "Broadcasting split transaction");
+  assert.equal(getSplitPhaseLabel("confirming"), "Waiting for confirmation");
+  assert.equal(getSplitPhaseLabel("success"), "Split recorded on-chain");
+  assert.equal(getSplitPhaseLabel("failed"), "Split failed");
+
+  // Split phase descriptions
+  assert.match(getSplitPhaseDescription("proving"), /zk-SNARK proof/i);
+  assert.match(getSplitPhaseDescription("preparing"), /blinding nonce/i);
+
+  // canSubmitSplit helper
+  assert.equal(
+    canSubmitSplit({
+      walletStatus: "connected",
+      hasSession: true,
+      maxSalaryInput: "10000",
+      privateSalaryInput: "7500",
+      splitPhase: "idle",
+    }),
+    true,
+  );
+
+  assert.equal(
+    canSubmitSplit({
+      walletStatus: "idle",
+      hasSession: true,
+      maxSalaryInput: "10000",
+      privateSalaryInput: "7500",
+      splitPhase: "idle",
+    }),
+    false,
+  );
+
+  assert.equal(
+    canSubmitSplit({
+      walletStatus: "connected",
+      hasSession: false,
+      maxSalaryInput: "10000",
+      privateSalaryInput: "7500",
+      splitPhase: "idle",
+    }),
+    false,
+  );
+
+  // Dashboard status for split phase
+  const workingSplitStatus = getDashboardStatusInfo({
+    walletStatus: "connected",
+    contractLoading: false,
+    contractError: "",
+    hasSession: true,
+    ledgerLoading: false,
+    ledgerError: "",
+    contractMode: "join",
+    splitPhase: "proving",
+  });
+  assert.equal(workingSplitStatus.label, "Generating proof");
+  assert.equal(workingSplitStatus.tone, "working");
+
+  const successSplitStatus = getDashboardStatusInfo({
+    walletStatus: "connected",
+    contractLoading: false,
+    contractError: "",
+    hasSession: true,
+    ledgerLoading: false,
+    ledgerError: "",
+    contractMode: "join",
+    splitPhase: "success",
+  });
+  assert.equal(successSplitStatus.label, "Split Recorded");
+  assert.equal(successSplitStatus.tone, "success");
+
+  const failedSplitStatus = getDashboardStatusInfo({
+    walletStatus: "connected",
+    contractLoading: false,
+    contractError: "",
+    hasSession: true,
+    ledgerLoading: false,
+    ledgerError: "",
+    contractMode: "join",
+    splitError: "Duplicate payroll split detected",
+  });
+  assert.equal(failedSplitStatus.label, "Split Failed");
+  assert.equal(failedSplitStatus.tone, "error");
+});
+

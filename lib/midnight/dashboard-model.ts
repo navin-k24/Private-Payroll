@@ -53,6 +53,16 @@ export type VerificationExecutionPhase =
   | "success"
   | "failed";
 
+export type SplitExecutionPhase =
+  | "idle"
+  | "preparing"
+  | "proving"
+  | "approving"
+  | "submitting"
+  | "confirming"
+  | "success"
+  | "failed";
+
 export type DashboardStatusInfo = {
   readonly label: string;
   readonly message: string;
@@ -69,17 +79,20 @@ export type PrivacyModelDetails = {
 export const PRIVACY_MODEL_DETAILS: PrivacyModelDetails = {
   title: "Zero-Knowledge Privacy Model",
   publicItems: [
-    "Verification count (total successful payroll validations)",
-    "Deployed contract address & circuit verifier keys",
-    "Maximum allowed salary ceiling (public threshold argument)",
+    "Payroll cycle counter & split counter (active cycle and total splits registered)",
+    "Public split commitments (32-byte collision-resistant cryptographic hashes)",
+    "Verification count (total compliance checks completed)",
+    "Maximum allowed salary ceiling (public policy threshold)",
+    "Deployed contract address & Compact circuit verifier keys",
   ],
   privateItems: [
-    "Employee raw salary figures and split amounts",
-    "Client witness values and intermediate circuit states",
-    "Encrypted local private state (stored in local LevelDB)",
+    "Employee raw salary figures and split distributions",
+    "Blinding nonces (32-byte secret salts protecting commitment privacy)",
+    "Client witness values and intermediate zk-SNARK wire assignments",
+    "Encrypted local private state (persisted securely in local storage)",
   ],
   explanation:
-    "The employee salary amount is supplied locally through an off-chain witness provider and verified inside a zero-knowledge circuit. The Midnight network consensus validators verify cryptographic proof validity and increment the public counter without ever seeing or storing the actual salary.",
+    "In the Midnight Private Payroll / Splits architecture, employee salary numbers and blinding salts are evaluated strictly within local zero-knowledge circuits via client witness providers. The contract registers only an anonymized cryptographic commitment hash in an on-chain set while incrementing split counters. No salary amounts, employee identities, or split distributions are ever revealed on the public ledger.",
 };
 
 /**
@@ -211,6 +224,106 @@ export function canSubmitVerification(params: {
 }
 
 /**
+ * Formats a public split count for display.
+ */
+export function formatSplitCount(
+  count: bigint | null | undefined,
+): string {
+  if (count === null || count === undefined) {
+    return "—";
+  }
+  return count.toString();
+}
+
+/**
+ * Formats a public payroll cycle for display.
+ */
+export function formatPayrollCycle(
+  cycle: bigint | null | undefined,
+): string {
+  if (cycle === null || cycle === undefined) {
+    return "—";
+  }
+  return `#${cycle.toString()}`;
+}
+
+/**
+ * User-facing short label for the current private split execution phase.
+ */
+export function getSplitPhaseLabel(
+  phase: SplitExecutionPhase,
+): string {
+  switch (phase) {
+    case "preparing":
+      return "Preparing private split";
+    case "proving":
+      return "Generating proof";
+    case "approving":
+      return "Waiting for wallet approval";
+    case "submitting":
+      return "Broadcasting split transaction";
+    case "confirming":
+      return "Waiting for confirmation";
+    case "success":
+      return "Split recorded on-chain";
+    case "failed":
+      return "Split failed";
+    default:
+      return "Record Private Split";
+  }
+}
+
+/**
+ * Detailed description for the private split execution phase.
+ */
+export function getSplitPhaseDescription(
+  phase: SplitExecutionPhase,
+): string {
+  switch (phase) {
+    case "preparing":
+      return "Generating unique blinding nonce and preparing off-chain witness inputs...";
+    case "proving":
+      return "Computing zk-SNARK proof locally for salary split constraints...";
+    case "approving":
+      return "Awaiting split transaction authorization in Midnight Lace...";
+    case "submitting":
+      return "Broadcasting split commitment to Midnight network validators...";
+    case "confirming":
+      return "Waiting for block inclusion and public split counter increment...";
+    case "success":
+      return "Private payroll split commitment successfully recorded on Midnight ledger.";
+    case "failed":
+      return "Private payroll split failed or duplicate commitment detected.";
+    default:
+      return "";
+  }
+}
+
+/**
+ * Pure helper determining whether the user can trigger recording a private payroll split.
+ */
+export function canSubmitSplit(params: {
+  readonly walletStatus: WalletConnectionStatus;
+  readonly hasSession: boolean;
+  readonly maxSalaryInput: string;
+  readonly privateSalaryInput: string;
+  readonly splitPhase: SplitExecutionPhase;
+}): boolean {
+  if (params.walletStatus !== "connected") return false;
+  if (!params.hasSession) return false;
+  if (
+    params.splitPhase !== "idle" &&
+    params.splitPhase !== "success" &&
+    params.splitPhase !== "failed"
+  ) {
+    return false;
+  }
+  const maxValid = parseSalaryAmount(params.maxSalaryInput).isValid;
+  const privValid = parseSalaryAmount(params.privateSalaryInput).isValid;
+  return maxValid && privValid;
+}
+
+/**
  * Derives the active dashboard status and user-friendly explanation based on wallet, contract, and ledger state.
  */
 export function getDashboardStatusInfo(options: {
@@ -223,7 +336,39 @@ export function getDashboardStatusInfo(options: {
   readonly contractMode: ContractInteractionMode;
   readonly verificationPhase?: VerificationExecutionPhase;
   readonly verificationError?: string;
+  readonly splitPhase?: SplitExecutionPhase;
+  readonly splitError?: string;
 }): DashboardStatusInfo {
+  if (options.splitError) {
+    return {
+      label: "Split Failed",
+      message: options.splitError,
+      tone: "error",
+    };
+  }
+
+  if (
+    options.splitPhase &&
+    options.splitPhase !== "idle" &&
+    options.splitPhase !== "success" &&
+    options.splitPhase !== "failed"
+  ) {
+    return {
+      label: getSplitPhaseLabel(options.splitPhase),
+      message: getSplitPhaseDescription(options.splitPhase),
+      tone: "working",
+    };
+  }
+
+  if (options.splitPhase === "success") {
+    return {
+      label: "Split Recorded",
+      message:
+        "Private payroll split commitment confirmed on Midnight ledger.",
+      tone: "success",
+    };
+  }
+
   if (options.verificationError) {
     return {
       label: "Verification Failed",

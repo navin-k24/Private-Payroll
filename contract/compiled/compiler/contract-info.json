@@ -21,6 +21,36 @@
         "types": [
         ]
       }
+    },
+    {
+      "name": "record_private_split",
+      "pure": false,
+      "proof": true,
+      "arguments": [
+        {
+          "name": "max_allowed_salary",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 18446744073709551615
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Bytes",
+        "length": 32
+      }
+    },
+    {
+      "name": "advance_payroll_cycle",
+      "pure": false,
+      "proof": true,
+      "arguments": [
+      ],
+      "result-type": {
+        "type-name": "Tuple",
+        "types": [
+        ]
+      }
     }
   ],
   "witnesses": [
@@ -32,6 +62,15 @@
         "type-name": "Uint",
         "maxval": 18446744073709551615
       }
+    },
+    {
+      "name": "get_split_nonce",
+      "arguments": [
+      ],
+      "result type": {
+        "type-name": "Bytes",
+        "length": 32
+      }
     }
   ],
   "contracts": [
@@ -42,6 +81,28 @@
       "index": 0,
       "exported": true,
       "storage": "Counter"
+    },
+    {
+      "name": "split_count",
+      "index": 1,
+      "exported": true,
+      "storage": "Counter"
+    },
+    {
+      "name": "payroll_cycle",
+      "index": 2,
+      "exported": true,
+      "storage": "Counter"
+    },
+    {
+      "name": "split_commitments",
+      "index": 3,
+      "exported": true,
+      "storage": "Set",
+      "type": {
+        "type-name": "Bytes",
+        "length": 32
+      }
     }
   ]
 }

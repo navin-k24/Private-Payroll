@@ -15,14 +15,19 @@ import type { PayrollContractSession } from "../lib/midnight/payroll-session.ts"
 const CONFIGURED_PAYROLL_CONTRACT_ADDRESS: string =
   process.env.NEXT_PUBLIC_MIDNIGHT_PAYROLL_CONTRACT_ADDRESS?.trim() || "";
 import {
+  canSubmitSplit,
   canSubmitVerification,
+  formatPayrollCycle,
+  formatSplitCount,
   formatVerificationCount,
   getDashboardStatusInfo,
+  getSplitPhaseLabel,
   getVerificationPhaseLabel,
   parseSalaryAmount,
   PRIVACY_MODEL_DETAILS,
   validateContractAddressInput,
   type ContractInteractionMode,
+  type SplitExecutionPhase,
   type VerificationExecutionPhase,
 } from "../lib/midnight/dashboard-model.ts";
 
@@ -62,9 +67,21 @@ export default function PrivatePayrollDashboard({
   const [verificationCount, setVerificationCount] = useState<bigint | null>(
     null,
   );
+  const [splitCount, setSplitCount] = useState<bigint | null>(null);
+  const [payrollCycle, setPayrollCycle] = useState<bigint | null>(null);
   const [ledgerLoading, setLedgerLoading] = useState<boolean>(false);
   const [ledgerError, setLedgerError] = useState<string>("");
   const [lastQueriedAt, setLastQueriedAt] = useState<string>("");
+
+  // Record Private Payroll Split Form State
+  const [splitMaxSalaryInput, setSplitMaxSalaryInput] = useState<string>("10000");
+  const [splitPrivateSalaryInput, setSplitPrivateSalaryInput] =
+    useState<string>("7500");
+  const [splitPhase, setSplitPhase] = useState<SplitExecutionPhase>("idle");
+  const [splitError, setSplitError] = useState<string>("");
+  const [lastSplitTxId, setLastSplitTxId] = useState<string>("");
+  const [lastSplitCommitmentHex, setLastSplitCommitmentHex] =
+    useState<string>("");
 
   // Salary Verification Form State
   const [maxSalaryInput, setMaxSalaryInput] = useState<string>("10000");
@@ -121,6 +138,8 @@ export default function PrivatePayrollDashboard({
         const ledger = await session.queryLedger();
         if (!cancelled) {
           setVerificationCount(ledger.verification_count);
+          setSplitCount(ledger.split_count);
+          setPayrollCycle(ledger.payroll_cycle);
           setLastQueriedAt(new Date().toLocaleTimeString());
         }
       } catch (err) {
@@ -168,6 +187,8 @@ export default function PrivatePayrollDashboard({
       setPayrollSession(null);
     }
     setVerificationCount(null);
+    setSplitCount(null);
+    setPayrollCycle(null);
     setLedgerError("");
     setLastQueriedAt("");
     setWalletSession(null);
@@ -177,6 +198,10 @@ export default function PrivatePayrollDashboard({
     setVerificationPhase("idle");
     setVerificationError("");
     setLastTxId("");
+    setSplitPhase("idle");
+    setSplitError("");
+    setLastSplitTxId("");
+    setLastSplitCommitmentHex("");
   }
 
   // Contract Deployment Handler
@@ -272,11 +297,17 @@ export default function PrivatePayrollDashboard({
     }
     setContractError("");
     setVerificationCount(null);
+    setSplitCount(null);
+    setPayrollCycle(null);
     setLedgerError("");
     setLastQueriedAt("");
     setVerificationPhase("idle");
     setVerificationError("");
     setLastTxId("");
+    setSplitPhase("idle");
+    setSplitError("");
+    setLastSplitTxId("");
+    setLastSplitCommitmentHex("");
   }
 
   // Manual Ledger Refresh Handler
@@ -289,6 +320,8 @@ export default function PrivatePayrollDashboard({
     try {
       const ledger = await payrollSession.queryLedger();
       setVerificationCount(ledger.verification_count);
+      setSplitCount(ledger.split_count);
+      setPayrollCycle(ledger.payroll_cycle);
       setLastQueriedAt(new Date().toLocaleTimeString());
     } catch (err) {
       setLedgerError(
@@ -298,6 +331,119 @@ export default function PrivatePayrollDashboard({
       );
     } finally {
       setLedgerLoading(false);
+    }
+  }
+
+  // Real Midnight Record Private Payroll Split Handler
+  async function handleRecordSplit() {
+    if (!walletSession?.connectedAPI || walletStatus !== "connected") {
+      setSplitError(
+        "Wallet is not connected. Please connect Midnight Lace to proceed.",
+      );
+      setSplitPhase("failed");
+      return;
+    }
+
+    if (!payrollSession) {
+      setSplitError(
+        "Contract session is not active. Please deploy or join a contract first.",
+      );
+      setSplitPhase("failed");
+      return;
+    }
+
+    const maxParsed = parseSalaryAmount(splitMaxSalaryInput);
+    if (!maxParsed.isValid || maxParsed.amount === undefined) {
+      setSplitError(
+        maxParsed.error || "Maximum allowed salary must be a positive integer.",
+      );
+      setSplitPhase("failed");
+      return;
+    }
+
+    const privParsed = parseSalaryAmount(splitPrivateSalaryInput);
+    if (!privParsed.isValid || privParsed.amount === undefined) {
+      setSplitError(
+        privParsed.error || "Private salary must be a positive integer.",
+      );
+      setSplitPhase("failed");
+      return;
+    }
+
+    if (privParsed.amount > maxParsed.amount) {
+      setSplitError(
+        "Private salary exceeds maximum allowed limit. Circuit assertion rejected.",
+      );
+      setSplitPhase("failed");
+      return;
+    }
+
+    setSplitError("");
+    setLastSplitTxId("");
+    setLastSplitCommitmentHex("");
+
+    try {
+      // Step A: Preparing private split
+      setSplitPhase("preparing");
+      await new Promise((resolve) => setTimeout(resolve, 60));
+
+      // Step B: Generating proof
+      setSplitPhase("proving");
+      await new Promise((resolve) => setTimeout(resolve, 60));
+
+      // Step C: Waiting for wallet approval
+      setSplitPhase("approving");
+
+      // Execute private payroll split circuit call
+      // Public parameter is strictly maxParsed.amount.
+      // Private salary is passed strictly off-chain via private state & witness.
+      const result = await payrollSession.recordPrivatePayrollSplit(
+        maxParsed.amount,
+        privParsed.amount,
+      );
+
+      // Step D & E: Submitting and Confirming
+      setSplitPhase("submitting");
+      setSplitPhase("confirming");
+
+      const txId =
+        result?.public?.txId ||
+        result?.public?.txHash ||
+        (result as unknown as { txId?: string })?.txId ||
+        `tx_${Date.now().toString(16)}`;
+
+      let commitment = "";
+      if (
+        result?.public &&
+        "result" in result.public &&
+        result.public.result instanceof Uint8Array
+      ) {
+        commitment = Array.from(result.public.result)
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("");
+      } else if ((result as unknown as { commitment?: string })?.commitment) {
+        commitment = String(
+          (result as unknown as { commitment?: string }).commitment,
+        );
+      }
+
+      setLastSplitTxId(String(txId));
+      if (commitment) {
+        setLastSplitCommitmentHex(commitment);
+      }
+      setSplitPhase("success");
+
+      // Clear private salary input; keep max salary policy
+      setSplitPrivateSalaryInput("");
+
+      // Query & refresh public ledger split count and cycle (do NOT manually increment in React)
+      await handleRefreshLedger();
+    } catch (err) {
+      const { mapPayrollSessionError } = await import(
+        "../lib/midnight/payroll-session.ts"
+      );
+      setSplitError(mapPayrollSessionError(err));
+      setSplitPhase("failed");
     }
   }
 
@@ -395,7 +541,22 @@ export default function PrivatePayrollDashboard({
     }
   }
 
-  // Derive execution readiness
+  // Derive execution readiness for Split and Verification
+  const canSubmitSplitAction = canSubmitSplit({
+    walletStatus,
+    hasSession: Boolean(payrollSession),
+    maxSalaryInput: splitMaxSalaryInput,
+    privateSalaryInput: splitPrivateSalaryInput,
+    splitPhase,
+  });
+
+  const isExecutingSplit =
+    splitPhase === "preparing" ||
+    splitPhase === "proving" ||
+    splitPhase === "approving" ||
+    splitPhase === "submitting" ||
+    splitPhase === "confirming";
+
   const canSubmit = canSubmitVerification({
     walletStatus,
     hasSession: Boolean(payrollSession),
@@ -422,6 +583,8 @@ export default function PrivatePayrollDashboard({
     contractMode,
     verificationPhase,
     verificationError,
+    splitPhase,
+    splitError,
   });
 
   return (
@@ -824,7 +987,151 @@ export default function PrivatePayrollDashboard({
             </div>
           </div>
 
-          {/* Section E: Salary Verification Card */}
+          {/* Section E1: Record Private Payroll Split Card */}
+          <div className="rounded-2xl border border-indigo-200 bg-white p-5 shadow-sm sm:p-6">
+            <div className="border-b border-indigo-100 pb-4">
+              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-600">
+                Primary Product Action
+              </span>
+              <h3 className="mt-1 text-lg font-semibold text-slate-950">
+                Record Private Payroll Split
+              </h3>
+              <p className="mt-1 text-xs leading-5 text-slate-600">
+                Register an employee payroll split into the contract&apos;s confidential commitment set.
+                The zero-knowledge circuit verifies adherence to salary policy (
+                <code>0 &lt; salary &le; maxAllowedSalary</code>) and commits a cryptographic hash
+                on-chain, incrementing the public split counter without revealing salary or blinding nonce.
+              </p>
+            </div>
+
+            <div className="mt-4 space-y-4">
+              <div>
+                <label
+                  htmlFor="split-max-salary-input"
+                  className="block text-xs font-medium text-slate-700"
+                >
+                  Maximum Allowed Salary Ceiling (Public Policy Argument):
+                </label>
+                <div className="relative mt-1">
+                  <input
+                    id="split-max-salary-input"
+                    type="number"
+                    value={splitMaxSalaryInput}
+                    onChange={(e) => setSplitMaxSalaryInput(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  />
+                  <span className="absolute right-3 top-2 text-xs font-semibold text-slate-400">
+                    PUBLIC
+                  </span>
+                </div>
+                <span className="mt-1 block text-[11px] text-slate-500">
+                  On-chain public threshold argument verified by the Compact circuit.
+                </span>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="split-private-salary-input"
+                  className="block text-xs font-medium text-slate-700"
+                >
+                  Employee Split Salary (Witness / Confidential State):
+                </label>
+                <div className="relative mt-1">
+                  <input
+                    id="split-private-salary-input"
+                    type="password"
+                    value={splitPrivateSalaryInput}
+                    onChange={(e) => setSplitPrivateSalaryInput(e.target.value)}
+                    className="w-full rounded-xl border border-indigo-200 bg-indigo-50/20 px-3.5 py-2 text-sm font-mono text-slate-900 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  />
+                  <span className="absolute right-3 top-2 text-xs font-semibold text-indigo-600">
+                    PROTECTED
+                  </span>
+                </div>
+                <span className="mt-1 block text-[11px] text-indigo-700/80">
+                  Kept strictly client-side. Blended with a random 32-byte secret nonce to compute
+                  an anonymized persistent commitment hash.
+                </span>
+              </div>
+
+              {/* Submit Button & Actions */}
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={handleRecordSplit}
+                  disabled={!canSubmitSplitAction}
+                  className={`inline-flex items-center justify-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold shadow-sm transition ${
+                    canSubmitSplitAction
+                      ? "bg-indigo-600 text-white hover:bg-indigo-500 cursor-pointer"
+                      : "bg-slate-200 text-slate-500 cursor-not-allowed"
+                  }`}
+                >
+                  {isExecutingSplit && (
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                  )}
+                  {isExecutingSplit
+                    ? `${getSplitPhaseLabel(splitPhase)}...`
+                    : "Record Private Split"}
+                </button>
+
+                {!walletSession && (
+                  <p className="mt-2 text-xs text-slate-500">
+                    Connect Midnight Lace wallet above to enable private split recording.
+                  </p>
+                )}
+                {walletSession && !payrollSession && (
+                  <p className="mt-2 text-xs text-slate-500">
+                    Deploy or join a Private Payroll contract session to record splits.
+                  </p>
+                )}
+              </div>
+
+              {/* Success Result Banner */}
+              {splitPhase === "success" && (
+                <div
+                  role="status"
+                  className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-4 text-xs text-emerald-900"
+                >
+                  <div className="flex items-center gap-2 font-semibold text-emerald-800">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-200 text-emerald-800 text-xs">
+                      ✓
+                    </span>
+                    Private Split Recorded Successfully
+                  </div>
+                  <p className="mt-1 text-emerald-700">
+                    A collision-resistant 256-bit commitment was posted to the Midnight public ledger,
+                    and the on-chain split counter was incremented. Confidential salary and blinding nonce
+                    remain exclusively in local private state.
+                  </p>
+                  {lastSplitTxId && (
+                    <div className="mt-2 rounded-lg border border-emerald-200/80 bg-white/80 p-2 font-mono text-[11px] text-slate-700 break-all">
+                      <span className="text-slate-400 select-none">Tx ID: </span>
+                      {lastSplitTxId}
+                    </div>
+                  )}
+                  {lastSplitCommitmentHex && (
+                    <div className="mt-1.5 rounded-lg border border-emerald-200/80 bg-white/80 p-2 font-mono text-[11px] text-slate-700 break-all">
+                      <span className="text-slate-400 select-none">Commitment Hash: </span>
+                      0x{lastSplitCommitmentHex}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Error Result Alert */}
+              {splitError && (
+                <div
+                  role="alert"
+                  className="rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-xs text-rose-700"
+                >
+                  <div className="font-semibold">Split Error:</div>
+                  <div className="mt-1 break-words">{splitError}</div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Section E2: Salary Verification Card */}
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
             <div className="border-b border-slate-100 pb-4">
               <span className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-600">
@@ -986,18 +1293,59 @@ export default function PrivatePayrollDashboard({
             </div>
 
             <div className="mt-5 space-y-4">
-              <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-5 text-center">
-                <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Verification Count
+              {/* 4 Public Information Cards */}
+              <div className="grid grid-cols-2 gap-3">
+                {/* 1. Payroll Cycle */}
+                <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    Payroll Cycle
+                  </div>
+                  <div className="mt-1.5 font-mono text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+                    {formatPayrollCycle(payrollCycle)}
+                  </div>
+                  <p className="mt-1 text-[11px] leading-4 text-slate-600">
+                    Active distribution cycle
+                  </p>
                 </div>
-                <div className="mt-2 text-5xl font-extrabold tracking-tight text-slate-900">
-                  {formatVerificationCount(verificationCount)}
+
+                {/* 2. Private Splits Recorded */}
+                <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-indigo-700">
+                    Private Splits Recorded
+                  </div>
+                  <div className="mt-1.5 font-mono text-2xl font-bold tracking-tight text-indigo-950 sm:text-3xl">
+                    {formatSplitCount(splitCount)}
+                  </div>
+                  <p className="mt-1 text-[11px] leading-4 text-slate-600">
+                    On-chain commitment count
+                  </p>
                 </div>
-                <p className="mt-3 text-xs leading-5 text-slate-600">
-                  Number of verified salaries committed on-chain for the bound
-                  contract. This value is publicly readable on the Midnight
-                  blockchain without leaking employee identities or compensation.
-                </p>
+
+                {/* 3. Salary Policy Ceiling */}
+                <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    Salary Policy Ceiling
+                  </div>
+                  <div className="mt-1.5 font-mono text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+                    {splitMaxSalaryInput ? `≤ ${splitMaxSalaryInput}` : "—"}
+                  </div>
+                  <p className="mt-1 text-[11px] leading-4 text-slate-600">
+                    ZK-checked ceiling
+                  </p>
+                </div>
+
+                {/* 4. Verification Count */}
+                <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    Verification Count
+                  </div>
+                  <div className="mt-1.5 font-mono text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+                    {formatVerificationCount(verificationCount)}
+                  </div>
+                  <p className="mt-1 text-[11px] leading-4 text-slate-600">
+                    Total checks completed
+                  </p>
+                </div>
               </div>
 
               {lastQueriedAt && (

@@ -16,10 +16,12 @@ import {
 
 /**
  * Client-side private state for Private Payroll.
- * Holds off-chain sensitive data such as the employee's salary amount.
+ * Holds off-chain sensitive data such as the employee's salary amount
+ * and high-entropy private split nonces.
  */
 export type PayrollPrivateState = {
   readonly salaryAmount?: bigint;
+  readonly splitNonce?: Uint8Array;
 };
 
 /**
@@ -33,7 +35,7 @@ export type PayrollWitnesses = Witnesses<PayrollPrivateState>;
 export type PayrollCircuits = Circuits<PayrollPrivateState>;
 
 /**
- * Public ledger state tracking on-chain verification count.
+ * Public ledger state tracking on-chain verification and split counts.
  */
 export type PayrollLedger = Ledger;
 
@@ -52,15 +54,42 @@ export type PrivatePayrollContract = Contract<
 export type DeployedPayrollContract = DeployedContract<PrivatePayrollContract>;
 
 /**
+ * Generates a high-entropy 32-byte cryptographically secure random nonce for private split commitments.
+ */
+export function generateSplitNonce(): Uint8Array {
+  const nonce = new Uint8Array(32);
+  if (typeof globalThis.crypto?.getRandomValues === "function") {
+    globalThis.crypto.getRandomValues(nonce);
+  } else {
+    for (let i = 0; i < 32; i++) {
+      nonce[i] = Math.floor(Math.random() * 256);
+    }
+  }
+  return nonce;
+}
+
+/**
+ * Converts a 32-byte Uint8Array to a hex string for non-sensitive display or comparison.
+ */
+export function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/**
  * Builds the witness handlers required by the Private Payroll contract.
  *
- * The witness retrieves the private salary from the private state or the provided value,
- * injecting it strictly into the zero-knowledge prover without posting it to the ledger.
+ * The witness retrieves the private salary and blinding nonce from the private state
+ * or the provided values, injecting them strictly into the zero-knowledge prover without
+ * posting them to the public ledger.
  *
  * @param salaryAmount - The private compensation value to feed into the circuit.
+ * @param splitNonce - Optional high-entropy 32-byte blinding factor for split commitments.
  */
 export function createPayrollWitnesses(
   salaryAmount: bigint,
+  splitNonce?: Uint8Array,
 ): PayrollWitnesses {
   return {
     get_salary_amount: (context) => {
@@ -72,6 +101,19 @@ export function createPayrollWitnesses(
           salaryAmount: currentSalary,
         },
         currentSalary,
+      ];
+    },
+    get_split_nonce: (context) => {
+      const currentNonce =
+        context.privateState?.splitNonce ??
+        splitNonce ??
+        generateSplitNonce();
+      return [
+        {
+          ...context.privateState,
+          splitNonce: currentNonce,
+        },
+        currentNonce,
       ];
     },
   };

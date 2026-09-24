@@ -355,6 +355,54 @@ To fulfill the approved **Level 3 idea ("Private Payroll / Splits")**, the contr
 ### 3. Current Limitation
 On-chain automated token balance transfers are not yet automated on-chain. Current implementation provides end-to-end cryptographic payroll split validation, duplicate prevention, on-chain commitment registration, and cycle tracking. Direct token transfer integrations are slated for upcoming milestones.
 
+---
+
+## Step 12: Automated Midnight Testing
+
+### 1. Test Architecture & Execution Stratification
+Automated testing in the repository is separated into fast local unit tests and deep integration verification:
+
+- **Fast Unit & Contract Suite (`npm test`):**
+  - Runs in ~3 seconds with zero external dependencies.
+  - Covers frontend component states, wallet connector logic, provider bridging, contract session helpers, and Compact contract assertions (`contract/tests/private-payroll.test.mjs`).
+  - Safe for CI pipelines where Docker daemon is not active.
+- **Midnight Integration Suite (`npm run test:midnight:integration`):**
+  - Tests the end-to-end runtime pipeline: compiled Compact contract bytecode (`contract/compiled/contract/index.js`), `@midnight-ntwrk/compact-runtime`, `@midnight-ntwrk/ledger`, encrypted LevelDB private state storage (`@midnight-ntwrk/midnight-js-level-private-state-provider`), and ZK witness ingestion.
+  - Automatically verifies reachability of local devnet endpoints (`http://localhost:6300`, `http://localhost:8088`, `http://localhost:9944`) and reports live status.
+  - Cleans up all LevelDB directories and provider handles upon completion.
+
+### 2. Integration Scenarios Validated
+1. **Deployment & Initial Ledger Read:**
+   - Contract constructor initializes `verification_count: 0`, `split_count: 0`, `payroll_cycle: 0`, and an empty `split_commitments` set.
+2. **Private Salary Verification (`verify_salary`):**
+   - Ingests employee private salary (`7500`) into client-side LevelDB storage.
+   - Executes `verify_salary(10000)` circuit; `verification_count` increments to 1.
+   - Asserts that public transaction arguments contain strictly `[10000]` and that the public ledger exposes no salary fields.
+3. **Private Payroll Split Commitment (`record_private_split`):**
+   - Computes `persistentHash<PrivatePayrollSplit>` off-chain using private salary and a 32-byte blinding salt.
+   - Enforces `0 < salary <= max_allowed_salary` via zero-knowledge circuit assertions.
+   - Inserts the resulting 32-byte commitment into `split_commitments` and increments `split_count` to 1.
+4. **Duplicate Commitment Rejection:**
+   - Re-executing an identical split (same salary and nonce) triggers the contract assertion `Duplicate payroll split: commitment already recorded`.
+   - Proves state invariance: `split_count` and `split_commitments` remain unchanged.
+5. **Zero Salary Circuit Rejection:**
+   - Validates that non-positive salaries (`salary = 0`) trigger circuit rejection (`Salary amount must be strictly greater than zero`), preserving ledger state.
+6. **Salary-Above-Ceiling Rejection:**
+   - Confirms that compensation exceeding the public ceiling (`salary > maxAllowedSalary`) is rejected by the circuit without incrementing counters.
+7. **Payroll Cycle Advancement (`advance_payroll_cycle`):**
+   - Advances `payroll_cycle` from 0 to 1 and retains historical split commitments and counters intact.
+
+### 3. Local DevNet Docker Stack
+A standalone devnet stack is defined in `docker/standalone.yml`:
+- `midnight-node`: Image `ghcr.io/midnightntwrk/midnight-node:0.20.0` (port `9944`).
+- `indexer`: Image `ghcr.io/midnightntwrk/indexer-standalone:3.0.0` (port `8088`).
+- `proof-server`: Image `ghcr.io/midnightntwrk/proof-server:7.0.0` (port `6300`).
+
+Managed via:
+- `npm run test:midnight:integration:up`: Launches devnet containers and waits for service health.
+- `npm run test:midnight:integration:down`: Gracefully tears down containers and storage volumes.
+
+
 
 
 

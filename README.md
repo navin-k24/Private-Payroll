@@ -65,9 +65,10 @@ npm run contract:compile
 
 ### 3. Run Test Suite
 ```bash
-npm test              # Application and integration tests (70 tests)
-npm run test:midnight # Compact contract-level tests (10 tests)
-npm run test:contracts# Preserved Soroban contract tests (6 tests)
+npm test                          # Application unit & contract tests (fast, no Docker needed)
+npm run test:midnight             # Compact contract-level tests (10 tests)
+npm run test:midnight:integration # Real Midnight integration test suite (7 scenarios)
+npm run test:contracts            # Preserved Soroban contract tests (6 tests)
 ```
 
 ### 4. Build and Lint
@@ -82,3 +83,47 @@ npm run dev
 ```
 
 Visit [http://localhost:3000](http://localhost:3000) to access the Midnight Private Payroll / Splits dashboard.
+
+---
+
+## Automated Midnight Testing
+
+The repository provides multi-tiered automated testing across unit, contract, and end-to-end integration layers:
+
+### 1. Test Architecture & Separation
+- **Unit & Contract Tests (`npm test`, `npm run test:midnight`):**
+  - Run within seconds using Node's native test runner (`node --test`).
+  - Do NOT spin up Docker containers or connect to external blockchain networks.
+  - Safe for CI environments and rapid local iteration.
+- **Midnight Integration Test Suite (`npm run test:midnight:integration`):**
+  - Executes the real Midnight Compact contract runtime (`contract/compiled/contract/index.js`), real Ledger state (`@midnight-ntwrk/ledger`), real witness injection, and client-side LevelDB encrypted private state storage (`levelPrivateStateProvider`).
+  - Connects to local devnet endpoints when available, or runs through the standalone contract runtime engine.
+  - Automatically manages lifecycle cleanup of LevelDB temporary databases.
+
+### 2. Integration Scenarios Covered
+1. **Contract Initialization:** Verifies `verification_count: 0`, `split_count: 0`, `payroll_cycle: 0`, and empty `split_commitments` set upon deployment.
+2. **Real Private Salary Verification:** Executes `verify_salary(10000)` with private salary `7500`, asserting that `verification_count` increments to 1, while the raw salary remains completely absent from public transaction arguments and public ledger state.
+3. **Real Private Payroll Split:** Executes `record_private_split(10000)` with private salary and 32-byte secret salt, registering a 32-byte cryptographic commitment on-chain and incrementing `split_count`.
+4. **Duplicate Commitment Rejection:** Proves double-split protection. Submitting an identical split commitment is rejected by the contract (`Duplicate payroll split: commitment already recorded`) and preserves ledger state invariance.
+5. **Zero Salary Circuit Rejection:** Asserts that non-positive salaries (`salary = 0`) trigger circuit assertion failure (`Salary amount must be strictly greater than zero`) with zero counter mutation.
+6. **Salary-Above-Ceiling Rejection:** Asserts that compensation exceeding the policy threshold (`salary > maxAllowedSalary`) is rejected by the circuit without incrementing counters.
+7. **Payroll Cycle Advancement:** Executes `advance_payroll_cycle()`, proving that `payroll_cycle` increments from 0 to 1 while retaining prior split commitments and historical counters.
+
+### 3. Local DevNet Orchestration (Docker)
+The local devnet stack uses official Midnight container images (`docker/standalone.yml`):
+- `midnight-node` (`ghcr.io/midnightntwrk/midnight-node:0.20.0`): Local Substrate consensus node on port `9944`.
+- `indexer` (`ghcr.io/midnightntwrk/indexer-standalone:3.0.0`): Standalone GraphQL & WebSocket indexer on port `8088`.
+- `proof-server` (`ghcr.io/midnightntwrk/proof-server:7.0.0`): Prover service for zero-knowledge transaction synthesis on port `6300`.
+
+**DevNet Management Commands:**
+```bash
+# Start local Midnight devnet services
+npm run test:midnight:integration:up
+
+# Run the integration test suite
+npm run test:midnight:integration
+
+# Stop and tear down devnet containers and storage volumes
+npm run test:midnight:integration:down
+```
+

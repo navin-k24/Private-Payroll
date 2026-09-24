@@ -39,7 +39,10 @@ import type { MidnightWalletAddresses } from "./wallet.ts";
 /**
  * Identifier for callable circuits in the Private Payroll contract.
  */
-export type PayrollCircuitId = "verify_salary";
+export type PayrollCircuitId =
+  | "verify_salary"
+  | "record_private_split"
+  | "advance_payroll_cycle";
 
 /**
  * Composite provider bundle satisfying MidnightJS ContractProviders for Private Payroll,

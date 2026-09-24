@@ -1,0 +1,38 @@
+# Midnight Local DevNet Standalone Environment for Private Payroll
+# Services:
+# - midnight-node: Local Substrate-based consensus & ledger node (Port 9944)
+# - indexer: Standalone GraphQL & WebSocket indexer (Port 8088)
+# - proof-server: Zero-knowledge transaction proving server (Port 6300)
+
+services:
+  midnight-node:
+    image: ghcr.io/midnightntwrk/midnight-node:0.20.0
+    container_name: midnight-node
+    ports:
+      - "9944:9944"
+    command:
+      - "--dev"
+      - "--rpc-external"
+      - "--rpc-cors=all"
+      - "--rpc-methods=unsafe"
+    restart: unless-stopped
+
+  indexer:
+    image: ghcr.io/midnightntwrk/indexer-standalone:3.0.0
+    container_name: midnight-indexer
+    ports:
+      - "8088:8088"
+    environment:
+      - SUBSTRATE_NODE_URL=ws://midnight-node:9944
+    depends_on:
+      - midnight-node
+    restart: unless-stopped
+
+  proof-server:
+    image: ghcr.io/midnightntwrk/proof-server:7.0.0
+    container_name: midnight-proof-server
+    ports:
+      - "6300:6300"
+    command:
+      - "--port=6300"
+    restart: unless-stopped

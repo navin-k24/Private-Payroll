@@ -106,6 +106,14 @@ export type PayrollContractSession = {
   ) => Promise<FinalizedCallTxData<PrivatePayrollContract, "record_private_split">>;
 
   /**
+   * Prepares and submits an advance_payroll_cycle circuit call.
+   * Increments the on-chain public payroll accounting cycle counter.
+   */
+  readonly advancePayrollCycle: () => Promise<
+    FinalizedCallTxData<PrivatePayrollContract, "advance_payroll_cycle">
+  >;
+
+  /**
    * Releases network connections, indexer subscriptions, and session resources.
    */
   readonly dispose: () => Promise<void>;
@@ -433,6 +441,12 @@ export async function deployPrivatePayrollContract(
           privateStateId,
           deployedContract: deployed,
         }),
+      advancePayrollCycle: async () =>
+        submitAdvancePayrollCycleCall(providers, {
+          contractAddress: deployedAddress,
+          privateStateId,
+          deployedContract: deployed,
+        }),
       dispose: async () => {
         await providers.dispose();
       },
@@ -532,6 +546,12 @@ export async function joinPrivatePayrollContract(
           maxAllowedSalary,
           privateSalary: privateSalary !== undefined ? privateSalary : options.initialSalary,
           splitNonce,
+          privateStateId,
+          deployedContract: found,
+        }),
+      advancePayrollCycle: async () =>
+        submitAdvancePayrollCycleCall(providers, {
+          contractAddress,
           privateStateId,
           deployedContract: found,
         }),
@@ -737,3 +757,58 @@ export async function submitRecordPrivateSplitCall(
     args: [options.maxAllowedSalary],
   });
 }
+
+/**
+ * Options for submitting an advance_payroll_cycle circuit call.
+ */
+export type SubmitAdvancePayrollCycleCallOptions = {
+  contractAddress: string;
+  privateStateId?: string;
+  deployedContract?:
+    | FoundContract<PrivatePayrollContract>
+    | DeployedContract<PrivatePayrollContract>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  submitCallTxFn?: (...args: any[]) => Promise<any>;
+};
+
+/**
+ * Prepares and submits a call to the `advance_payroll_cycle` circuit.
+ * Increments the on-chain public payroll accounting cycle counter.
+ */
+export async function submitAdvancePayrollCycleCall(
+  providers: PayrollProviders,
+  options: SubmitAdvancePayrollCycleCallOptions,
+): Promise<FinalizedCallTxData<PrivatePayrollContract, "advance_payroll_cycle">> {
+  const address = options.contractAddress?.trim();
+  if (!isValidContractAddress(address)) {
+    throw new Error(
+      `Invalid contract address: "${options.contractAddress}". Cannot execute advance_payroll_cycle.`,
+    );
+  }
+
+  const privateStateId = options.privateStateId || DEFAULT_PRIVATE_STATE_ID;
+
+  // 1. If a deployedContract handle with callTx is already available, invoke it directly
+  if (options.deployedContract?.callTx?.advance_payroll_cycle) {
+    return await options.deployedContract.callTx.advance_payroll_cycle();
+  }
+
+  // 2. Otherwise construct the circuit call options and submit via submitCallTx
+  const baseCompiled = CompiledContract.withVacantWitnesses(
+    CompiledContract.make("private-payroll", Contract),
+  );
+  const compiledContract = CompiledContract.withCompiledFileAssets(
+    baseCompiled,
+    "contract/compiled",
+  );
+
+  const submitFn = options.submitCallTxFn || submitCallTx;
+  return await submitFn(providers, {
+    compiledContract,
+    circuitId: "advance_payroll_cycle",
+    contractAddress: address as ContractAddress,
+    privateStateId,
+    args: [],
+  });
+}
+

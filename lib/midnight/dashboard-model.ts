@@ -43,6 +43,16 @@ export type ContractInteractionMode = "join" | "deploy";
 
 export type DashboardStatusTone = "neutral" | "working" | "success" | "error";
 
+export type VerificationExecutionPhase =
+  | "idle"
+  | "preparing"
+  | "proving"
+  | "approving"
+  | "submitting"
+  | "confirming"
+  | "success"
+  | "failed";
+
 export type DashboardStatusInfo = {
   readonly label: string;
   readonly message: string;
@@ -125,6 +135,82 @@ export function formatVerificationCount(
 }
 
 /**
+ * User-facing short label for the current verification phase.
+ */
+export function getVerificationPhaseLabel(
+  phase: VerificationExecutionPhase,
+): string {
+  switch (phase) {
+    case "preparing":
+      return "Preparing private verification";
+    case "proving":
+      return "Generating proof";
+    case "approving":
+      return "Waiting for wallet approval";
+    case "submitting":
+      return "Submitting transaction";
+    case "confirming":
+      return "Waiting for confirmation";
+    case "success":
+      return "Verification successful";
+    case "failed":
+      return "Verification failed";
+    default:
+      return "Verify Privately";
+  }
+}
+
+/**
+ * Detailed description for the verification phase.
+ */
+export function getVerificationPhaseDescription(
+  phase: VerificationExecutionPhase,
+): string {
+  switch (phase) {
+    case "preparing":
+      return "Preparing zero-knowledge verification context and local witness inputs...";
+    case "proving":
+      return "Computing zk-SNARK proof locally with proof-server...";
+    case "approving":
+      return "Awaiting transaction signature and approval in Midnight Lace...";
+    case "submitting":
+      return "Broadcasting verified transaction to Midnight network consensus nodes...";
+    case "confirming":
+      return "Waiting for block finalization and indexer transaction inclusion...";
+    case "success":
+      return "Salary verification successfully committed to the Midnight public ledger.";
+    case "failed":
+      return "Salary verification failed or was rejected.";
+    default:
+      return "";
+  }
+}
+
+/**
+ * Pure helper determining whether the user can trigger salary verification.
+ */
+export function canSubmitVerification(params: {
+  readonly walletStatus: WalletConnectionStatus;
+  readonly hasSession: boolean;
+  readonly maxSalaryInput: string;
+  readonly privateSalaryInput: string;
+  readonly verificationPhase: VerificationExecutionPhase;
+}): boolean {
+  if (params.walletStatus !== "connected") return false;
+  if (!params.hasSession) return false;
+  if (
+    params.verificationPhase !== "idle" &&
+    params.verificationPhase !== "success" &&
+    params.verificationPhase !== "failed"
+  ) {
+    return false;
+  }
+  const maxValid = parseSalaryAmount(params.maxSalaryInput).isValid;
+  const privValid = parseSalaryAmount(params.privateSalaryInput).isValid;
+  return maxValid && privValid;
+}
+
+/**
  * Derives the active dashboard status and user-friendly explanation based on wallet, contract, and ledger state.
  */
 export function getDashboardStatusInfo(options: {
@@ -135,7 +221,39 @@ export function getDashboardStatusInfo(options: {
   readonly ledgerLoading: boolean;
   readonly ledgerError: string;
   readonly contractMode: ContractInteractionMode;
+  readonly verificationPhase?: VerificationExecutionPhase;
+  readonly verificationError?: string;
 }): DashboardStatusInfo {
+  if (options.verificationError) {
+    return {
+      label: "Verification Failed",
+      message: options.verificationError,
+      tone: "error",
+    };
+  }
+
+  if (
+    options.verificationPhase &&
+    options.verificationPhase !== "idle" &&
+    options.verificationPhase !== "success" &&
+    options.verificationPhase !== "failed"
+  ) {
+    return {
+      label: getVerificationPhaseLabel(options.verificationPhase),
+      message: getVerificationPhaseDescription(options.verificationPhase),
+      tone: "working",
+    };
+  }
+
+  if (options.verificationPhase === "success") {
+    return {
+      label: "Verification Successful",
+      message:
+        "Zero-knowledge salary verification confirmed on Midnight ledger.",
+      tone: "success",
+    };
+  }
+
   if (options.contractError) {
     return {
       label: "Contract Error",

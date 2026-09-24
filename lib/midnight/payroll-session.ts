@@ -80,9 +80,13 @@ export type PayrollContractSession = {
 
   /**
    * Prepares and submits a private salary verification circuit call.
+   *
+   * @param maxAllowedSalary - Maximum salary ceiling (public on-chain parameter).
+   * @param privateSalary - Optional employee private salary (injected into private state/witness).
    */
   readonly verifySalary: (
     maxAllowedSalary: bigint,
+    privateSalary?: bigint,
   ) => Promise<FinalizedCallTxData<PrivatePayrollContract, "verify_salary">>;
 
   /**
@@ -178,50 +182,78 @@ export function mapPayrollSessionError(error: unknown): string {
     typeof error === "string"
       ? { message: error }
       : (error as { message?: string; reason?: string; name?: string });
-  const msg = err.message || err.reason || "";
+  const rawMsg = err.message || err.reason || "";
+  const msg = rawMsg.toLowerCase();
 
-  if (msg.includes("Invalid contract address")) {
-    return msg;
+  if (rawMsg.includes("Invalid contract address")) {
+    return rawMsg;
   }
   if (
-    msg.includes("connectedAPI is required") ||
+    msg.includes("salary must be positive") ||
+    msg.includes("strictly greater than zero")
+  ) {
+    return "Private salary must be strictly greater than 0.";
+  }
+  if (
+    msg.includes("salary exceeds maximum allowed") ||
+    msg.includes("salary exceeds")
+  ) {
+    return "Private salary exceeds maximum allowed limit. Circuit assertion rejected.";
+  }
+  if (
+    msg.includes("user rejected") ||
+    msg.includes("user declined") ||
+    msg.includes("transaction rejected") ||
+    msg.includes("cancelled") ||
+    msg.includes("canceled") ||
+    msg.includes("rejected by user")
+  ) {
+    return "Transaction was rejected or cancelled in Midnight Lace wallet.";
+  }
+  if (
+    msg.includes("connectedapi is required") ||
     msg.includes("wallet not connected") ||
-    msg.includes("Midnight Lace wallet extension is not detected")
+    msg.includes("midnight lace wallet extension is not detected")
   ) {
     return "Wallet is not connected. Please connect Midnight Lace to proceed with contract operations.";
   }
   if (
-    msg.includes("Missing proof-server") ||
+    msg.includes("missing proof-server") ||
     msg.includes("prover") ||
-    msg.includes("Proof server")
+    msg.includes("proof server")
   ) {
     return "Midnight proof-server configuration is unavailable or unreachable. Ensure your prover service is running.";
   }
-  if (msg.includes("Missing indexer") || msg.includes("indexer")) {
+  if (msg.includes("missing indexer") || msg.includes("indexer")) {
     return "Midnight indexer configuration is unavailable or unreachable. Check your network configuration.";
   }
   if (
-    msg.includes("Contract not found") ||
+    msg.includes("contract not found") ||
     msg.includes("no matching data") ||
-    msg.includes("ContractTypeError")
+    msg.includes("contracttypeerror")
   ) {
-    return `Contract was not found on the Midnight network or contract verification keys do not match: ${msg}`;
+    return `Contract was not found on the Midnight network or contract verification keys do not match: ${rawMsg}`;
   }
   if (
-    msg.includes("DeployTxFailedError") ||
+    msg.includes("deploytxfailederror") ||
     msg.includes("deploy") ||
-    msg.includes("Deployment failed")
+    msg.includes("deployment failed")
   ) {
-    return `Private Payroll deployment failed: ${msg}`;
+    return `Private Payroll deployment failed: ${rawMsg}`;
   }
   if (
-    msg.includes("CallTxFailedError") ||
+    msg.includes("calltxfailederror") ||
     msg.includes("verify_salary")
   ) {
-    return `Salary verification circuit execution failed: ${msg}`;
+    return `Salary verification circuit execution failed: ${rawMsg}`;
   }
 
-  return msg || "Failed to process contract session operation.";
+  // Sanitize any remaining message so raw stack traces or internal numbers aren't exposed
+  if (rawMsg.length > 200 || rawMsg.includes("\n") || rawMsg.includes(" at ")) {
+    return "Salary verification transaction failed during processing.";
+  }
+
+  return rawMsg || "Failed to process contract session operation.";
 }
 
 /**
@@ -330,11 +362,11 @@ export async function deployPrivatePayrollContract(
       providers,
       privateStateId,
       queryLedger: async () => queryPayrollLedgerState(providers.publicDataProvider, deployedAddress),
-      verifySalary: async (maxAllowedSalary: bigint) =>
+      verifySalary: async (maxAllowedSalary: bigint, privateSalary?: bigint) =>
         submitVerifySalaryCall(providers, {
           contractAddress: deployedAddress,
           maxAllowedSalary,
-          privateSalary: initialSalary,
+          privateSalary: privateSalary !== undefined ? privateSalary : initialSalary,
           privateStateId,
           deployedContract: deployed,
         }),
@@ -419,11 +451,11 @@ export async function joinPrivatePayrollContract(
       providers,
       privateStateId,
       queryLedger: async () => queryPayrollLedgerState(providers.publicDataProvider, contractAddress),
-      verifySalary: async (maxAllowedSalary: bigint) =>
+      verifySalary: async (maxAllowedSalary: bigint, privateSalary?: bigint) =>
         submitVerifySalaryCall(providers, {
           contractAddress,
           maxAllowedSalary,
-          privateSalary: options.initialSalary,
+          privateSalary: privateSalary !== undefined ? privateSalary : options.initialSalary,
           privateStateId,
           deployedContract: found,
         }),
@@ -473,6 +505,19 @@ export async function submitVerifySalaryCall(
     throw new Error(
       `Invalid contract address: "${options.contractAddress}". Cannot execute verify_salary.`,
     );
+  }
+
+  if (options.maxAllowedSalary <= BigInt(0)) {
+    throw new Error("Maximum allowed salary must be strictly greater than zero.");
+  }
+
+  if (options.privateSalary !== undefined) {
+    if (options.privateSalary <= BigInt(0)) {
+      throw new Error("salary must be positive");
+    }
+    if (options.privateSalary > options.maxAllowedSalary) {
+      throw new Error("salary exceeds maximum allowed");
+    }
   }
 
   const privateStateId = options.privateStateId || DEFAULT_PRIVATE_STATE_ID;

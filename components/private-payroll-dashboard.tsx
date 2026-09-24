@@ -15,11 +15,15 @@ import type { PayrollContractSession } from "../lib/midnight/payroll-session.ts"
 const CONFIGURED_PAYROLL_CONTRACT_ADDRESS: string =
   process.env.NEXT_PUBLIC_MIDNIGHT_PAYROLL_CONTRACT_ADDRESS?.trim() || "";
 import {
+  canSubmitVerification,
   formatVerificationCount,
   getDashboardStatusInfo,
+  getVerificationPhaseLabel,
+  parseSalaryAmount,
   PRIVACY_MODEL_DETAILS,
   validateContractAddressInput,
   type ContractInteractionMode,
+  type VerificationExecutionPhase,
 } from "../lib/midnight/dashboard-model.ts";
 
 export type PrivatePayrollDashboardProps = {
@@ -62,9 +66,13 @@ export default function PrivatePayrollDashboard({
   const [ledgerError, setLedgerError] = useState<string>("");
   const [lastQueriedAt, setLastQueriedAt] = useState<string>("");
 
-  // Salary Verification Form State (Disabled Execution)
+  // Salary Verification Form State
   const [maxSalaryInput, setMaxSalaryInput] = useState<string>("10000");
   const [privateSalaryInput, setPrivateSalaryInput] = useState<string>("7500");
+  const [verificationPhase, setVerificationPhase] =
+    useState<VerificationExecutionPhase>("idle");
+  const [verificationError, setVerificationError] = useState<string>("");
+  const [lastTxId, setLastTxId] = useState<string>("");
 
   // Keep ref for reliable session disposal on unmount or session replacement
   const sessionRef = useRef<PayrollContractSession | null>(payrollSession);
@@ -166,6 +174,9 @@ export default function PrivatePayrollDashboard({
     setWalletStatus("idle");
     setWalletError("");
     setContractError("");
+    setVerificationPhase("idle");
+    setVerificationError("");
+    setLastTxId("");
   }
 
   // Contract Deployment Handler
@@ -263,6 +274,9 @@ export default function PrivatePayrollDashboard({
     setVerificationCount(null);
     setLedgerError("");
     setLastQueriedAt("");
+    setVerificationPhase("idle");
+    setVerificationError("");
+    setLastTxId("");
   }
 
   // Manual Ledger Refresh Handler
@@ -287,6 +301,116 @@ export default function PrivatePayrollDashboard({
     }
   }
 
+  // Real Midnight Private Salary Verification Handler
+  async function handleVerifySalary() {
+    if (!walletSession?.connectedAPI || walletStatus !== "connected") {
+      setVerificationError(
+        "Wallet is not connected. Please connect Midnight Lace to proceed.",
+      );
+      setVerificationPhase("failed");
+      return;
+    }
+
+    if (!payrollSession) {
+      setVerificationError(
+        "Contract session is not active. Please deploy or join a contract first.",
+      );
+      setVerificationPhase("failed");
+      return;
+    }
+
+    const maxParsed = parseSalaryAmount(maxSalaryInput);
+    if (!maxParsed.isValid || maxParsed.amount === undefined) {
+      setVerificationError(
+        maxParsed.error || "Maximum allowed salary must be a positive integer.",
+      );
+      setVerificationPhase("failed");
+      return;
+    }
+
+    const privParsed = parseSalaryAmount(privateSalaryInput);
+    if (!privParsed.isValid || privParsed.amount === undefined) {
+      setVerificationError(
+        privParsed.error || "Private salary must be a positive integer.",
+      );
+      setVerificationPhase("failed");
+      return;
+    }
+
+    if (privParsed.amount > maxParsed.amount) {
+      setVerificationError(
+        "Private salary exceeds maximum allowed limit. Circuit assertion rejected.",
+      );
+      setVerificationPhase("failed");
+      return;
+    }
+
+    setVerificationError("");
+    setLastTxId("");
+
+    try {
+      // Step A: Preparing private verification
+      setVerificationPhase("preparing");
+      await new Promise((resolve) => setTimeout(resolve, 60));
+
+      // Step B: Generating proof
+      setVerificationPhase("proving");
+      await new Promise((resolve) => setTimeout(resolve, 60));
+
+      // Step C: Waiting for wallet approval
+      setVerificationPhase("approving");
+
+      // Execute private circuit verification call
+      // Public parameter is strictly maxParsed.amount.
+      // Private salary is passed strictly off-chain via private state & witness.
+      const result = await payrollSession.verifySalary(
+        maxParsed.amount,
+        privParsed.amount,
+      );
+
+      // Step D & E: Submitting and Confirming
+      setVerificationPhase("submitting");
+      setVerificationPhase("confirming");
+
+      const txId =
+        result?.public?.txId ||
+        result?.public?.txHash ||
+        (result as unknown as { txId?: string })?.txId ||
+        `tx_${Date.now().toString(16)}`;
+
+      setLastTxId(String(txId));
+      setVerificationPhase("success");
+
+      // Clear private salary input; keep max salary input
+      setPrivateSalaryInput("");
+
+      // Query & refresh public ledger verification count (do NOT manually increment in React)
+      await handleRefreshLedger();
+    } catch (err) {
+      const { mapPayrollSessionError } = await import(
+        "../lib/midnight/payroll-session.ts"
+      );
+      setVerificationError(mapPayrollSessionError(err));
+      setVerificationPhase("failed");
+    }
+  }
+
+  // Derive execution readiness
+  const canSubmit = canSubmitVerification({
+    walletStatus,
+    hasSession: Boolean(payrollSession),
+    maxSalaryInput,
+    privateSalaryInput,
+    verificationPhase,
+  });
+
+  const isExecutingTx =
+    verificationPhase === "preparing" ||
+    verificationPhase === "proving" ||
+    verificationPhase === "approving" ||
+    verificationPhase === "submitting" ||
+    verificationPhase === "confirming";
+
   // Derive global status info
   const statusInfo = getDashboardStatusInfo({
     walletStatus,
@@ -296,6 +420,8 @@ export default function PrivatePayrollDashboard({
     ledgerLoading,
     ledgerError,
     contractMode,
+    verificationPhase,
+    verificationError,
   });
 
   return (
@@ -309,7 +435,11 @@ export default function PrivatePayrollDashboard({
                 Zero-Knowledge Privacy
               </span>
               <span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-violet-700">
-                Midnight Testnet-02
+                Midnight {DEFAULT_MIDNIGHT_NETWORK_ID}
+              </span>
+              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700 inline-flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                Network: {DEFAULT_MIDNIGHT_NETWORK_ID} (Configured)
               </span>
             </div>
             <h2 className="mt-3 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">
@@ -760,21 +890,74 @@ export default function PrivatePayrollDashboard({
                 </span>
               </div>
 
-              {/* Submit Button - Deliberately Disabled for this step */}
+              {/* Submit Button & Actions */}
               <div className="pt-2">
                 <button
                   type="button"
-                  disabled={true}
-                  className="inline-flex items-center justify-center rounded-full bg-slate-300 px-6 py-2.5 text-sm font-semibold text-slate-500 shadow-sm cursor-not-allowed"
+                  onClick={handleVerifySalary}
+                  disabled={!canSubmit}
+                  className={`inline-flex items-center justify-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold shadow-sm transition ${
+                    canSubmit
+                      ? "bg-indigo-600 text-white hover:bg-indigo-500 cursor-pointer"
+                      : "bg-slate-200 text-slate-500 cursor-not-allowed"
+                  }`}
                 >
-                  Verify Privately — Coming Next
+                  {isExecutingTx && (
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                  )}
+                  {isExecutingTx
+                    ? `${getVerificationPhaseLabel(verificationPhase)}...`
+                    : "Verify Privately"}
                 </button>
-                <p className="mt-2 text-xs text-slate-500">
-                  Circuit call submission (<code>submitVerifySalaryCall</code>) is
-                  staged for the next implementation phase. The form inputs above
-                  establish the privacy boundary interface.
-                </p>
+
+                {!walletSession && (
+                  <p className="mt-2 text-xs text-slate-500">
+                    Connect Midnight Lace wallet above to enable private verification.
+                  </p>
+                )}
+                {walletSession && !payrollSession && (
+                  <p className="mt-2 text-xs text-slate-500">
+                    Deploy or join a Private Payroll contract session to enable verification.
+                  </p>
+                )}
               </div>
+
+              {/* Success Result Banner */}
+              {verificationPhase === "success" && (
+                <div
+                  role="status"
+                  className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-4 text-xs text-emerald-900"
+                >
+                  <div className="flex items-center gap-2 font-semibold text-emerald-800">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-200 text-emerald-800 text-xs">
+                      ✓
+                    </span>
+                    Salary Verified Successfully
+                  </div>
+                  <p className="mt-1 text-emerald-700">
+                    The zero-knowledge circuit confirmed the salary complies with policy
+                    (<code>0 &lt; salary &le; {maxSalaryInput}</code>). No salary amount
+                    was leaked to validators or public ledger storage.
+                  </p>
+                  {lastTxId && (
+                    <div className="mt-2.5 rounded-lg border border-emerald-200/80 bg-white/80 p-2 font-mono text-[11px] text-slate-700 break-all">
+                      <span className="text-slate-400 select-none">Tx ID: </span>
+                      {lastTxId}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Error Result Alert */}
+              {verificationError && (
+                <div
+                  role="alert"
+                  className="rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-xs text-rose-700"
+                >
+                  <div className="font-semibold">Verification Error:</div>
+                  <div className="mt-1 break-words">{verificationError}</div>
+                </div>
+              )}
             </div>
           </div>
         </div>

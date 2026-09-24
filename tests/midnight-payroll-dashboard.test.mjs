@@ -242,24 +242,20 @@ test("Test 6: Session and provider cleanup guarantees", async () => {
   assert.match(dashboardSource, /handleDisconnectWallet/);
 });
 
-test("Test 7: Verify Privately button remains disabled and does not submit transactions", async () => {
+test("Test 7: Verify Privately button is connected and controlled by wallet/session validation readiness", async () => {
   const dashboardSource = await readFile(
     new URL("../components/private-payroll-dashboard.tsx", import.meta.url),
     "utf8",
   );
 
-  // Verify the button is explicitly disabled
-  assert.match(dashboardSource, /disabled=\{true\}/);
+  // Verify the button is conditioned on canSubmit
+  assert.match(dashboardSource, /disabled=\{!canSubmit\}/);
 
-  // Verify the button label communicates that verification is staged for next step
-  assert.match(dashboardSource, /Verify Privately — Coming Next/);
+  // Verify the button click is wired to handleVerifySalary
+  assert.match(dashboardSource, /onClick=\{handleVerifySalary\}/);
 
-  // Verify submitVerifySalaryCall is NOT invoked in this dashboard component
-  assert.doesNotMatch(
-    dashboardSource,
-    /submitVerifySalaryCall\(/,
-    "submitVerifySalaryCall must not be called from the dashboard in Step 9",
-  );
+  // Verify handleVerifySalary invokes payrollSession.verifySalary with public max and private salary
+  assert.match(dashboardSource, /payrollSession\.verifySalary\(/);
 
   // Verify raw salary is never logged
   assert.doesNotMatch(

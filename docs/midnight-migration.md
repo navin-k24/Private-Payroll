@@ -266,12 +266,13 @@ The contract session layer (`lib/midnight/payroll-session.ts`, re-exported via `
   - Midnight Lace wallet adapter and provider bridging.
   - Contract deployment (`deployPrivatePayrollContract`) and join (`joinPrivatePayrollContract`) workflows.
   - Public ledger state reader (`queryPayrollLedgerState`) and verification counter tracking.
-  - Circuit call builder (`submitVerifySalaryCall`) with privacy-preserving witness binding.
+  - End-to-end zero-knowledge circuit call execution (`verify_salary`) through `submitVerifySalaryCall` and `session.verifySalary()`.
   - Application frontend dashboard (`components/private-payroll-dashboard.tsx`) integrated as the primary experience in `app/page.tsx`.
-  - Comprehensive unit test coverage for wallet, providers, contract, payroll session, and frontend dashboard states.
+  - Privacy boundary enforcement: private salary passed solely via witness and local encrypted state; `maxAllowedSalary` is the sole public transaction argument.
+  - Comprehensive unit test coverage for wallet, providers, contract, payroll session, frontend dashboard, and private verification pipeline.
 - **Next Steps:**
-  - Connect and enable private verification execution (`submitVerifySalaryCall`) from the frontend UI.
   - Implement full payroll distribution and private salary splits.
+  - Employee address registry and multi-recipient payouts.
 
 ---
 
@@ -280,14 +281,14 @@ The contract session layer (`lib/midnight/payroll-session.ts`, re-exported via `
 The Midnight Private Payroll frontend (`components/private-payroll-dashboard.tsx` mounted in `app/page.tsx`) implements a seamless 5-stage lifecycle:
 
 ```
-[1. Wallet Connection] ──> [2. Provider/Session] ──> [3. Deploy or Join] ──> [4. Public Ledger Query] ──> [5. Private Verification UI]
+[1. Wallet Connection] ──> [2. Provider/Session] ──> [3. Deploy or Join] ──> [4. Public Ledger Query] ──> [5. Private Verification Execution]
     (Midnight Lace)             (6 Abstractions)        (Compact Contract)          (verification_count)          (verify_salary Circuit)
 ```
 
 ### 1. Wallet Connection
 - **User Action:** User clicks "Connect Midnight Lace".
 - **Execution:** Connects via `connectMidnightWallet()` to the official DApp Connector API (`testnet-02`), resolving the user's shielded address (`addresses.shieldedAddress`), shielded public keys, unshielded address, and dust address.
-- **UI State:** Renders the abbreviated shielded address, active network identifier, and exposes disconnect / account switching actions.
+- **UI State:** Renders the abbreviated shielded address, active network identifier (`testnet-02`), and exposes disconnect / account switching actions.
 
 ### 2. Provider & Session Layer Binding
 - **Lifecycle:** On successful wallet connection, the returned `ConnectedAPI` is held ready for contract operations.
@@ -305,11 +306,19 @@ The Midnight Private Payroll frontend (`components/private-payroll-dashboard.tsx
 - **Manual Refresh:** Users can trigger on-demand indexer synchronization via the "Refresh" button.
 - **Zero Privacy Leakage:** Demonstrates that the public ledger reveals only the verification tally, completely shielding individual compensation figures.
 
-### 5. Private Verification UI
-- **Interface Structure:** Exposes the two essential circuit parameters:
+### 5. Private Verification Execution (Live in Step 10)
+- **Interface Structure:**
   - `maxAllowedSalary`: Public threshold argument posted on-chain.
-  - `privateSalary`: Confidential employee salary amount provided strictly via the local witness mechanism.
-- **Staged Execution (Current Status):** The submit button is visibly rendered as `Verify Privately — Coming Next` and strictly disabled (`disabled={true}`). In this step, no transaction is executed, and raw salary amounts are never logged or transmitted. Live zero-knowledge proof generation and submission via `submitVerifySalaryCall()` will be enabled in Step 10.
+  - `privateSalary`: Confidential employee salary amount provided strictly via the local witness mechanism (protected by `type="password"` input).
+- **Execution Phases:**
+  1. `Preparing private verification`: Ingests private salary into local private state provider.
+  2. `Generating proof`: Local proof-server constructs zero-knowledge proof for `verify_salary`.
+  3. `Waiting for wallet approval`: Prompts user approval in Midnight Lace wallet.
+  4. `Submitting transaction`: Broadcasts verified transaction to Midnight consensus nodes.
+  5. `Waiting for confirmation`: Waits for block finalization and indexer transaction inclusion.
+  6. `Verification successful`: Displays confirmed on-chain transaction ID, clears the private salary input field, and automatically refreshes `verification_count` from the public ledger.
+- **Error Mapping:** Clean error messages for invalid salary (`salary <= 0`), exceeded ceiling (`salary > maxAllowedSalary`), wallet rejection, or unreachable network endpoints without leaking sensitive numbers or stack traces.
+
 
 
 

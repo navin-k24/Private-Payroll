@@ -267,9 +267,50 @@ The contract session layer (`lib/midnight/payroll-session.ts`, re-exported via `
   - Contract deployment (`deployPrivatePayrollContract`) and join (`joinPrivatePayrollContract`) workflows.
   - Public ledger state reader (`queryPayrollLedgerState`) and verification counter tracking.
   - Circuit call builder (`submitVerifySalaryCall`) with privacy-preserving witness binding.
-  - Unit tests covering scenarios A through G with comprehensive mocks.
+  - Application frontend dashboard (`components/private-payroll-dashboard.tsx`) integrated as the primary experience in `app/page.tsx`.
+  - Comprehensive unit test coverage for wallet, providers, contract, payroll session, and frontend dashboard states.
 - **Next Steps:**
-  - Implement the Midnight Private Payroll user interface in the Next.js frontend, replacing the legacy Stellar payment panel with wallet connect, contract deployment/joining controls, and private salary verification widgets.
+  - Connect and enable private verification execution (`submitVerifySalaryCall`) from the frontend UI.
+  - Implement full payroll distribution and private salary splits.
+
+---
+
+## Midnight Private Payroll Frontend Flow
+
+The Midnight Private Payroll frontend (`components/private-payroll-dashboard.tsx` mounted in `app/page.tsx`) implements a seamless 5-stage lifecycle:
+
+```
+[1. Wallet Connection] ──> [2. Provider/Session] ──> [3. Deploy or Join] ──> [4. Public Ledger Query] ──> [5. Private Verification UI]
+    (Midnight Lace)             (6 Abstractions)        (Compact Contract)          (verification_count)          (verify_salary Circuit)
+```
+
+### 1. Wallet Connection
+- **User Action:** User clicks "Connect Midnight Lace".
+- **Execution:** Connects via `connectMidnightWallet()` to the official DApp Connector API (`testnet-02`), resolving the user's shielded address (`addresses.shieldedAddress`), shielded public keys, unshielded address, and dust address.
+- **UI State:** Renders the abbreviated shielded address, active network identifier, and exposes disconnect / account switching actions.
+
+### 2. Provider & Session Layer Binding
+- **Lifecycle:** On successful wallet connection, the returned `ConnectedAPI` is held ready for contract operations.
+- **No Early Overhead:** MidnightJS providers (LevelDB encrypted private storage, indexer client, ZK config provider, HTTP proof server client) are only constructed on explicit deployment or joining.
+- **Cleanup Management:** Active sessions are tracked in a React ref and explicitly disposed via `session.dispose()` when switching contracts or unmounting.
+
+### 3. Contract Deployment or Discovery
+- **Join Existing Mode:** User inputs a 64-character hexadecimal or Bech32m address (`contract_...`). Address validation (`validateContractAddressInput`) validates format and rejects placeholders before invoking `joinPrivatePayrollContract()`. Circuit verification keys are validated against local compiled artifacts.
+- **Deploy New Mode:** User enters an optional initial salary amount to seed local private storage and clicks "Deploy Private Payroll Contract". Calls `deployPrivatePayrollContract()`, committing the initial private state and resolving the new contract address.
+- **Feedback:** Displays progress indicators ("Joining Contract...", "Deploying Contract...") and maps errors into human-readable messages via `mapPayrollSessionError()`.
+
+### 4. Public Ledger Query
+- **Automatic Polling:** Once a contract session is established, `session.queryLedger()` queries the GraphQL indexer for `verification_count`.
+- **Public Counter Display:** Displays the total count of verified payroll assertions committed to the Midnight blockchain.
+- **Manual Refresh:** Users can trigger on-demand indexer synchronization via the "Refresh" button.
+- **Zero Privacy Leakage:** Demonstrates that the public ledger reveals only the verification tally, completely shielding individual compensation figures.
+
+### 5. Private Verification UI
+- **Interface Structure:** Exposes the two essential circuit parameters:
+  - `maxAllowedSalary`: Public threshold argument posted on-chain.
+  - `privateSalary`: Confidential employee salary amount provided strictly via the local witness mechanism.
+- **Staged Execution (Current Status):** The submit button is visibly rendered as `Verify Privately — Coming Next` and strictly disabled (`disabled={true}`). In this step, no transaction is executed, and raw salary amounts are never logged or transmitted. Live zero-knowledge proof generation and submission via `submitVerifySalaryCall()` will be enabled in Step 10.
+
 
 
 

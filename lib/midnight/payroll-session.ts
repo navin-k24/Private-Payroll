@@ -23,7 +23,7 @@ import {
 } from "@midnight-ntwrk/midnight-js-contracts";
 import { CompiledContract } from "@midnight-ntwrk/midnight-js-protocol/compact-js";
 import type { ContractAddress } from "@midnight-ntwrk/midnight-js-protocol/compact-runtime";
-import { asContractAddress, type PublicDataProvider } from "@midnight-ntwrk/midnight-js-types";
+import type { PublicDataProvider } from "@midnight-ntwrk/midnight-js-types";
 import {
   Contract,
   createPayrollWitnesses,
@@ -44,24 +44,8 @@ import { DEFAULT_PRIVATE_STATE_ID } from "./session.ts";
 export const CONFIGURED_PAYROLL_CONTRACT_ADDRESS: string =
   process.env.NEXT_PUBLIC_MIDNIGHT_PAYROLL_CONTRACT_ADDRESS?.trim() || "";
 
-/**
- * Validates whether a candidate string represents a valid Midnight contract address.
- * Rejects empty strings, placeholders, and malformed inputs.
- */
-export function isValidContractAddress(address: unknown): address is ContractAddress {
-  if (typeof address !== "string") return false;
-  const trimmed = address.trim();
-  if (!trimmed || trimmed === "placeholder" || trimmed.includes("...") || trimmed.length < 32) {
-    return false;
-  }
-  try {
-    const parsed = asContractAddress(trimmed);
-    return Boolean(parsed);
-  } catch {
-    // Also accept valid 64-character hexadecimal or standard Midnight Bech32m prefixes
-    return /^[0-9a-fA-F]{64}$/.test(trimmed) || /^(contract_|mn1)[0-9a-z]{30,}$/i.test(trimmed);
-  }
-}
+import { isValidContractAddress } from "./dashboard-model.ts";
+export { isValidContractAddress };
 
 /**
  * Unified application contract session for an active Midnight Private Payroll deployment.

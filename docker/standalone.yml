@@ -6,7 +6,7 @@
 
 services:
   midnight-node:
-    image: ghcr.io/midnightntwrk/midnight-node:0.20.0
+    image: midnightntwrk/midnight-node:0.20.0
     container_name: midnight-node
     ports:
       - "9944:9944"
@@ -18,7 +18,7 @@ services:
     restart: unless-stopped
 
   indexer:
-    image: ghcr.io/midnightntwrk/indexer-standalone:3.0.0
+    image: midnightntwrk/indexer-standalone:3.0.0
     container_name: midnight-indexer
     ports:
       - "8088:8088"
@@ -29,10 +29,11 @@ services:
     restart: unless-stopped
 
   proof-server:
-    image: ghcr.io/midnightntwrk/proof-server:7.0.0
+    image: midnightntwrk/proof-server:8.0.3
     container_name: midnight-proof-server
     ports:
       - "6300:6300"
-    command:
-      - "--port=6300"
+    environment:
+      - PORT=6300
+    command: ["midnight-proof-server", "-v"]
     restart: unless-stopped

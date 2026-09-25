@@ -118,9 +118,9 @@ The repository provides multi-tiered automated testing across unit, contract, an
 
 ### 3. Local DevNet Orchestration (Docker)
 The local devnet stack uses official Midnight container images (`docker/standalone.yml`):
-- `midnight-node` (`ghcr.io/midnightntwrk/midnight-node:0.20.0`): Local Substrate consensus node on port `9944`.
-- `indexer` (`ghcr.io/midnightntwrk/indexer-standalone:3.0.0`): Standalone GraphQL & WebSocket indexer on port `8088`.
-- `proof-server` (`ghcr.io/midnightntwrk/proof-server:7.0.0`): Prover service for zero-knowledge transaction synthesis on port `6300`.
+- `midnight-node` (`midnightntwrk/midnight-node:0.20.0`): Local Substrate consensus node on port `9944`.
+- `indexer` (`midnightntwrk/indexer-standalone:3.0.0`): Standalone GraphQL & WebSocket indexer on port `8088`.
+- `proof-server` (`midnightntwrk/proof-server:8.0.3`): Prover service for zero-knowledge transaction synthesis on port `6300`.
 
 **DevNet Management Commands:**
 ```bash

@@ -67,7 +67,7 @@ async function devnetUp() {
 
     let proofServerReady = false;
     let indexerReady = false;
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 60; i++) {
       if (!proofServerReady) {
         proofServerReady = await checkEndpoint("http://localhost:6300");
       }

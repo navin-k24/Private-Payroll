@@ -394,9 +394,9 @@ Automated testing in the repository is separated into fast local unit tests and 
 
 ### 3. Local DevNet Docker Stack
 A standalone devnet stack is defined in `docker/standalone.yml`:
-- `midnight-node`: Image `ghcr.io/midnightntwrk/midnight-node:0.20.0` (port `9944`).
-- `indexer`: Image `ghcr.io/midnightntwrk/indexer-standalone:3.0.0` (port `8088`).
-- `proof-server`: Image `ghcr.io/midnightntwrk/proof-server:7.0.0` (port `6300`).
+- `midnight-node`: Image `midnightntwrk/midnight-node:0.20.0` (port `9944`).
+- `indexer`: Image `midnightntwrk/indexer-standalone:3.0.0` (port `8088`).
+- `proof-server`: Image `midnightntwrk/proof-server:8.0.3` (port `6300`).
 
 Managed via:
 - `npm run test:midnight:integration:up`: Launches devnet containers and waits for service health.
@@ -437,6 +437,11 @@ The GitHub Actions pipeline (`.github/workflows/ci.yml`) runs on every push and 
 - **Strictly Honest Failure:** If devnet services fail to initialize, time out, or are offline, the integration suite rejects with an `AssertionError` (`[Integration CI Failure]`) rather than silently passing or skipping.
 - **Failure Diagnostics:** Captures full container logs via `docker compose logs` and uploads them as a GitHub Actions workflow artifact (`devnet-docker-logs`).
 - **Guaranteed Teardown:** Executes `npm run test:midnight:integration:down` in an `always()` post-step to clean up all containers and volumes.
+
+### 4. CI Toolchain & DevNet Infrastructure Repair
+- **Compact 0.31.1 Symlink Resolution:** The upstream `compact update 0.31.1` tool links only the top-level bash script `compactc` into `~/.compact/bin`, but the script executes `"$thisdir/compactc.bin"`. In bash, `$thisdir` resolves to `~/.compact/bin` rather than the canonical target directory, producing `No such file or directory`. The CI workflow resolves the version target directory via `find "$HOME/.compact/versions/0.31.1" -name compactc.bin`, symlinks all binary dependencies (`compactc.bin`, `zkir`, `zkir-v3`) into `~/.compact/bin/`, and exports the version directory to `$GITHUB_PATH`.
+- **Docker Hub DevNet Registry Migration:** Migrated container references from restricted GitHub Container Registry (`ghcr.io/midnightntwrk/*`) to public Docker Hub (`midnightntwrk/midnight-node:0.20.0`, `midnightntwrk/indexer-standalone:3.0.0`, `midnightntwrk/proof-server:8.0.3` with command `["midnight-proof-server", "-v"]`). This resolves unauthorized pull errors and allows anonymous container pulls during CI integration runs.
+
 
 
 

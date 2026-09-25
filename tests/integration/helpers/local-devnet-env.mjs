@@ -44,7 +44,7 @@ export async function checkDevnetAvailability(timeoutMs = 1500) {
   ]);
 
   return {
-    isAvailable: proofServer || indexer,
+    isAvailable: Boolean(proofServer && indexer),
     proofServer,
     indexer,
     node: false, // Node Substrate RPC typically requires WebSocket or JSON-RPC POST

@@ -402,6 +402,43 @@ Managed via:
 - `npm run test:midnight:integration:up`: Launches devnet containers and waits for service health.
 - `npm run test:midnight:integration:down`: Gracefully tears down containers and storage volumes.
 
+---
+
+## Step 13: CI/CD Pipeline & Full Default Test Coverage Restoration
+
+### 1. Test Coverage Restoration & Root Cause Analysis
+During Step 12, `package.json` had temporarily specified `"test": "node --test tests/*.test.mjs contract/tests/*.test.mjs"`, which narrowed test discovery. This caused `npm test` to report 55 tests instead of the prior 70 tests:
+- **What Was Excluded:** The 15 tests in `lib/payment-contract.test.mjs` (9 tests) and `lib/payment-dashboard-model.test.mjs` (6 tests).
+- **The Resolution:** `package.json` was updated to `"test": "node --test tests/*.test.mjs contract/tests/*.test.mjs lib/*.test.mjs"`.
+- **Restored Inventory:**
+  - `tests/*.test.mjs`: 45 application, wallet, session, and provider tests
+  - `contract/tests/private-payroll.test.mjs`: 10 Compact contract circuit tests
+  - `lib/*.test.mjs`: 15 payment contract and model tests
+  - **Total Default Test Count:** Exactly **70 tests**, running in ~2.6 seconds with zero external dependencies.
+
+### 2. GitHub Actions CI Architecture
+The GitHub Actions pipeline (`.github/workflows/ci.yml`) runs on every push and pull request to `main` and `release/**` branches, executing two specialized parallel jobs:
+
+#### A. Verify & Build Job (`verify`)
+- **Environment:** Ubuntu with Node.js 22 and Rust stable.
+- **Reproducible Compact Compiler:** Automatically installs the official Compact toolchain manager and pins the compiler version to `0.31.1` via `compact update 0.31.1`, exporting `$HOME/.compact/bin` to `$GITHUB_PATH`.
+- **Execution Pipeline:**
+  1. `compactc --version` verification (asserts `0.31.1`)
+  2. Compact smart contract compilation (`npm run contract:compile`)
+  3. Default unit & contract test suite (`npm test`, 70 tests)
+  4. Midnight circuit unit tests (`npm run test:midnight`, 10 tests)
+  5. Preserved Soroban contract tests (`npm run test:contracts`, 6 tests)
+  6. ESLint static analysis (`npm run lint`, 0 warnings, 0 errors)
+  7. Next.js production build (`npm run build`)
+
+#### B. Midnight DevNet Integration Job (`integration`)
+- Provisions the isolated Midnight local devnet stack (`midnight-node`, `indexer`, `proof-server`) using `npm run test:midnight:integration:up`.
+- Runs `npm run test:midnight:integration` with `MIDNIGHT_DEVNET_REQUIRED="true"`.
+- **Strictly Honest Failure:** If devnet services fail to initialize, time out, or are offline, the integration suite rejects with an `AssertionError` (`[Integration CI Failure]`) rather than silently passing or skipping.
+- **Failure Diagnostics:** Captures full container logs via `docker compose logs` and uploads them as a GitHub Actions workflow artifact (`devnet-docker-logs`).
+- **Guaranteed Teardown:** Executes `npm run test:midnight:integration:down` in an `always()` post-step to clean up all containers and volumes.
+
+
 
 
 

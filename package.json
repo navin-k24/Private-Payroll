@@ -7,14 +7,14 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test tests/*.test.mjs contract/tests/*.test.mjs",
+    "test": "node --test tests/*.test.mjs contract/tests/*.test.mjs lib/*.test.mjs",
     "contract:compile": "node contract/compile.mjs",
     "test:midnight": "node --test contract/tests/*.test.mjs",
-    "test:midnight:integration": "node --test tests/integration/*.test.mjs",
+    "test:midnight:integration": "node --test tests/integration/private-payroll-integration.test.mjs",
     "test:midnight:integration:up": "node scripts/devnet.mjs up",
     "test:midnight:integration:down": "node scripts/devnet.mjs down",
     "test:contracts": "cargo test --manifest-path soroban/Cargo.toml",
-    "verify": "npm run test && npm run test:contracts && npm run lint && npm run build"
+    "verify": "npm run test && npm run test:midnight && npm run test:contracts && npm run lint && npm run build"
   },
   "dependencies": {
     "@midnight-ntwrk/compact-runtime": "^0.16.0",

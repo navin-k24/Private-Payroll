@@ -1,5 +1,7 @@
 # Private-Payroll
 
+[![CI](https://github.com/navin-k24/Private-Payroll/actions/workflows/ci.yml/badge.svg)](https://github.com/navin-k24/Private-Payroll/actions/workflows/ci.yml)
+
 A privacy-preserving payroll and splits dApp built on Midnight, enabling confidential employee compensation compliance and private split commitments with zero-knowledge proofs and selective disclosure.
 
 ## Current Project Status: Private Payroll / Splits
@@ -65,7 +67,7 @@ npm run contract:compile
 
 ### 3. Run Test Suite
 ```bash
-npm test                          # Application unit & contract tests (fast, no Docker needed)
+npm test                          # Full default test suite (70 tests: application, dashboard, wallet, session, contract)
 npm run test:midnight             # Compact contract-level tests (10 tests)
 npm run test:midnight:integration # Real Midnight integration test suite (7 scenarios)
 npm run test:contracts            # Preserved Soroban contract tests (6 tests)
@@ -91,14 +93,19 @@ Visit [http://localhost:3000](http://localhost:3000) to access the Midnight Priv
 The repository provides multi-tiered automated testing across unit, contract, and end-to-end integration layers:
 
 ### 1. Test Architecture & Separation
-- **Unit & Contract Tests (`npm test`, `npm run test:midnight`):**
-  - Run within seconds using Node's native test runner (`node --test`).
-  - Do NOT spin up Docker containers or connect to external blockchain networks.
-  - Safe for CI environments and rapid local iteration.
+- **Default Fast Test Suite (`npm test`):**
+  - Executes **70 tests** across application models, frontend dashboard components, Midnight Lace wallet connectors, MidnightJS provider bridging, contract session flows, and Compact contract assertions.
+  - Runs in ~3 seconds using Node's native test runner (`node --test`).
+  - Completely self-contained: does NOT require Docker or external blockchain services.
+  - Test inventory:
+    - `tests/*.test.mjs`: 45 application, wallet, provider, and session tests.
+    - `contract/tests/private-payroll.test.mjs`: 10 Compact circuit tests.
+    - `lib/*.test.mjs`: 15 preserved payment contract & dashboard tests.
 - **Midnight Integration Test Suite (`npm run test:midnight:integration`):**
   - Executes the real Midnight Compact contract runtime (`contract/compiled/contract/index.js`), real Ledger state (`@midnight-ntwrk/ledger`), real witness injection, and client-side LevelDB encrypted private state storage (`levelPrivateStateProvider`).
   - Connects to local devnet endpoints when available, or runs through the standalone contract runtime engine.
   - Automatically manages lifecycle cleanup of LevelDB temporary databases.
+  - When `MIDNIGHT_DEVNET_REQUIRED=true` is set (e.g. in CI), the suite strictly fails if the devnet services are unreachable.
 
 ### 2. Integration Scenarios Covered
 1. **Contract Initialization:** Verifies `verification_count: 0`, `split_count: 0`, `payroll_cycle: 0`, and empty `split_commitments` set upon deployment.
@@ -126,4 +133,24 @@ npm run test:midnight:integration
 # Stop and tear down devnet containers and storage volumes
 npm run test:midnight:integration:down
 ```
+
+### 4. Continuous Integration & Quality Pipeline (GitHub Actions)
+The repository CI workflow (`.github/workflows/ci.yml`) runs on every push and pull request across two dedicated parallel jobs:
+
+1. **Verify & Build Job (`verify`):**
+   - **Environment:** Ubuntu with Node.js 22 and Rust stable toolchain.
+   - **Toolchain Alignment:** Automatically installs and pins Compact compiler `0.31.1`.
+   - **Quality Gates:**
+     1. Compact contract compilation (`npm run contract:compile`)
+     2. Full default unit & contract test suite (`npm test`, 70 tests)
+     3. Dedicated Compact contract tests (`npm run test:midnight`, 10 tests)
+     4. Preserved Soroban contract tests (`npm run test:contracts`, 6 tests)
+     5. ESLint validation (`npm run lint`, 0 warnings, 0 errors)
+     6. Next.js production build (`npm run build`)
+2. **Midnight Integration Job (`integration`):**
+   - Automatically provisions local devnet containers (`midnight-node`, `indexer`, `proof-server`) via `npm run test:midnight:integration:up`.
+   - Executes `npm run test:midnight:integration` with `MIDNIGHT_DEVNET_REQUIRED=true`.
+   - Honest assertion: if devnet services fail to initialize or are unreachable, the job fails immediately.
+   - On failure: captures and uploads `docker compose logs` as an artifact.
+   - Always tears down devnet containers upon completion.
 

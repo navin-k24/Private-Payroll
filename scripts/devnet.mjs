@@ -66,16 +66,26 @@ async function devnetUp() {
     console.log("- Proof Server: http://localhost:6300");
 
     let proofServerReady = false;
-    for (let i = 0; i < 15; i++) {
-      proofServerReady = await checkEndpoint("http://localhost:6300");
-      if (proofServerReady) break;
+    let indexerReady = false;
+    for (let i = 0; i < 30; i++) {
+      if (!proofServerReady) {
+        proofServerReady = await checkEndpoint("http://localhost:6300");
+      }
+      if (!indexerReady) {
+        indexerReady = await checkEndpoint("http://localhost:8088");
+      }
+      if (proofServerReady && indexerReady) break;
       await new Promise((r) => setTimeout(r, 1000));
     }
 
-    if (proofServerReady) {
-      console.log("\n[Midnight DevNet] All devnet services started successfully.");
+    if (proofServerReady && indexerReady) {
+      console.log("\n[Midnight DevNet] All devnet services started successfully and are healthy.");
     } else {
-      console.log("\n[Midnight DevNet] Containers launched. Services are still initializing.");
+      console.log(`\n[Midnight DevNet Status] Proof Server: ${proofServerReady ? "Ready" : "Pending"}, Indexer: ${indexerReady ? "Ready" : "Pending"}`);
+      if (process.env.CI || process.env.MIDNIGHT_DEVNET_REQUIRED === "true") {
+        console.error("[Midnight DevNet Error] DevNet services failed to become healthy within timeout.");
+        process.exit(1);
+      }
     }
   } catch (err) {
     console.error("\n[Midnight DevNet Error] Failed to start devnet containers:", err.message);

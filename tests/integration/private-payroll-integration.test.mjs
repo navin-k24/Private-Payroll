@@ -27,11 +27,24 @@ import { generateSplitNonce } from "../../lib/midnight/contract.ts";
 test("Midnight Private Payroll - Local Integration Test Suite", async (t) => {
   // Check DevNet reachability status
   const devnetStatus = await checkDevnetAvailability();
+  const requireDevnet =
+    process.env.MIDNIGHT_DEVNET_REQUIRED?.trim() === "true" ||
+    process.env.REQUIRE_DEVNET?.trim() === "true";
+
   t.diagnostic(
     `[DevNet Status] Proof Server: ${devnetStatus.proofServer ? "ONLINE" : "OFFLINE"}, ` +
     `Indexer: ${devnetStatus.indexer ? "ONLINE" : "OFFLINE"} ` +
     `(${devnetStatus.isAvailable ? "Live devnet detected" : "Standalone contract runtime engine"})`,
   );
+
+  if (requireDevnet && !devnetStatus.isAvailable) {
+    assert.fail(
+      `[Integration CI Failure] Midnight DevNet was required (MIDNIGHT_DEVNET_REQUIRED=true), but devnet endpoints are offline. ` +
+      `Proof Server: ${devnetStatus.proofServer ? "ONLINE" : "OFFLINE"}, ` +
+      `Indexer: ${devnetStatus.indexer ? "ONLINE" : "OFFLINE"}. ` +
+      `Ensure local devnet containers (midnight-node, indexer, proof-server) are running.`,
+    );
+  }
 
   let harness;
   const initialSalary = 7500n;

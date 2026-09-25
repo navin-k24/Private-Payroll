@@ -9,6 +9,7 @@ on:
 
 jobs:
   verify:
+    name: Verify & Build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -26,8 +27,24 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run tests
+      - name: Install Compact compiler
+        run: |
+          curl --proto '=https' --tlsv1.2 -LsSf https://github.com/midnightntwrk/compact/releases/latest/download/compact-installer.sh | sh
+          $HOME/.local/bin/compact update 0.31.1
+          echo "$HOME/.compact/bin" >> $GITHUB_PATH
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Verify Compact compiler version
+        run: compactc --version
+
+      - name: Compile Compact contracts
+        run: npm run contract:compile
+
+      - name: Run default test suite
         run: npm test
+
+      - name: Run Midnight contract tests
+        run: npm run test:midnight
 
       - name: Test Soroban contracts
         run: npm run test:contracts
@@ -35,5 +52,46 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Build
+      - name: Production build
         run: npm run build
+
+  integration:
+    name: Midnight Local DevNet Integration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Start Midnight local devnet
+        run: npm run test:midnight:integration:up
+
+      - name: Run Midnight integration tests
+        env:
+          MIDNIGHT_DEVNET_REQUIRED: "true"
+        run: npm run test:midnight:integration
+
+      - name: Dump DevNet Docker logs on failure
+        if: failure()
+        run: |
+          docker compose -f docker/standalone.yml logs > devnet-docker.log 2>&1 || true
+
+      - name: Upload DevNet logs artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: devnet-docker-logs
+          path: devnet-docker.log
+          retention-days: 7
+
+      - name: Teardown Midnight local devnet
+        if: always()
+        run: npm run test:midnight:integration:down

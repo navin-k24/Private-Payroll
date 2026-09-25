@@ -59,20 +59,39 @@ export async function checkDevnetAvailability(timeoutMs = 1500) {
       clearTimeout(t);
       if (r.status === 200) return true;
     } catch {}
-
     return false;
   };
 
-  const [proofServer, indexer] = await Promise.all([
+  const checkNode = async () => {
+    try {
+      const c = new AbortController();
+      const t = setTimeout(() => c.abort(), timeoutMs);
+      const r = await fetch("http://localhost:9944", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "chain_getBlockHash", params: [1] }),
+        signal: c.signal,
+      });
+      clearTimeout(t);
+      if (r.ok) {
+        const d = await r.json();
+        return Boolean(d.result && typeof d.result === "string" && d.result.startsWith("0x"));
+      }
+    } catch {}
+    return false;
+  };
+
+  const [proofServer, indexer, node] = await Promise.all([
     check("http://localhost:6300"),
     checkIndexer(),
+    checkNode(),
   ]);
 
   return {
     isAvailable: Boolean(proofServer && indexer),
     proofServer,
     indexer,
-    node: false, // Node Substrate RPC typically requires WebSocket or JSON-RPC POST
+    node,
   };
 }
 

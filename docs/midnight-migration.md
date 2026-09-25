@@ -394,8 +394,8 @@ Automated testing in the repository is separated into fast local unit tests and 
 
 ### 3. Local DevNet Docker Stack
 A standalone devnet stack is defined in `docker/standalone.yml`:
-- `midnight-node`: Image `midnightntwrk/midnight-node:0.20.0` (port `9944`).
-- `indexer`: Image `midnightntwrk/indexer-standalone:3.0.0` (port `8088`).
+- `midnight-node`: Image `midnightntwrk/midnight-node:0.22.0` (port `9944`, `CFG_PRESET=dev`, `CHAIN=dev`).
+- `indexer`: Image `midnightntwrk/indexer-standalone:4.0.0` (port `8088`).
 - `proof-server`: Image `midnightntwrk/proof-server:8.0.3` (port `6300`).
 
 Managed via:
@@ -440,8 +440,9 @@ The GitHub Actions pipeline (`.github/workflows/ci.yml`) runs on every push and 
 
 ### 4. CI Toolchain & DevNet Infrastructure Repair
 - **Compact 0.31.1 Symlink Resolution:** The upstream `compact update 0.31.1` tool links only the top-level bash script `compactc` into `~/.compact/bin`, but the script executes `"$thisdir/compactc.bin"`. In bash, `$thisdir` resolves to `~/.compact/bin` rather than the canonical target directory, producing `No such file or directory`. The CI workflow resolves the version target directory via `find "$HOME/.compact/versions/0.31.1" -name compactc.bin`, symlinks all binary dependencies (`compactc.bin`, `zkir`, `zkir-v3`) into `~/.compact/bin/`, and exports the version directory to `$GITHUB_PATH`.
-- **Docker Hub DevNet Registry Migration:** Migrated container references from restricted GitHub Container Registry (`ghcr.io/midnightntwrk/*`) to public Docker Hub (`midnightntwrk/midnight-node:0.20.0`, `midnightntwrk/indexer-standalone:3.0.0`, `midnightntwrk/proof-server:8.0.3` with command `["midnight-proof-server", "-v"]`). This resolves unauthorized pull errors and allows anonymous container pulls during CI integration runs.
-- **Standalone Indexer Configuration & Readiness:** The `indexer-standalone:3.0.0` container requires `APP__INFRA__SECRET` (a mandatory 32-byte hex encryption key without default) and `APP__INFRA__NODE__URL=ws://midnight-node:9944` (the container ignores legacy `SUBSTRATE_NODE_URL`). Without these, the indexer exits with status 1 on boot. In `docker/standalone.yml`, `APP__APPLICATION__NETWORK_ID=undeployed`, `APP__INFRA__NODE__URL`, and `APP__INFRA__SECRET` are configured. The readiness check in `scripts/devnet.mjs` and `tests/integration/helpers/local-devnet-env.mjs` probes the official `/ready` route (which returns HTTP 200 once the indexer has connected to the node, executed SQLite migrations, and synced to tip; returning HTTP 503 while catching up) with a fallback to the GraphQL query endpoint.
+- **Docker Hub DevNet Registry Migration:** Migrated container references from restricted GitHub Container Registry (`ghcr.io/midnightntwrk/*`) to public Docker Hub (`midnightntwrk/midnight-node:0.22.0`, `midnightntwrk/indexer-standalone:4.0.0`, `midnightntwrk/proof-server:8.0.3` with command `["midnight-proof-server", "-v"]`). This resolves unauthorized pull errors and allows anonymous container pulls during CI integration runs.
+- **Node Standalone Dev Preset (`CFG_PRESET=dev`):** Without `CFG_PRESET=dev` and `CHAIN=dev`, the official node entrypoint defaults to a network configuration expecting Ariadne and fails with `db_sync_postgres_connection_string must be defined if ariadne is enabled`. Custom entrypoint CLI flags (`--dev`) bypassed preset loading. Removing custom CLI overrides and providing `CFG_PRESET=dev` and `CHAIN=dev` ensures the node starts the standalone development chain without requiring PostgreSQL. A healthcheck gates on block #1 authoring (`chain_getBlockHash(1)`).
+- **Standalone Indexer Secret & Configuration:** The indexer deserializes `APP__INFRA__SECRET` via Figment. An unquoted all-zero value was parsed as unsigned integer `0`, causing `invalid type: found unsigned int 0, expected a string for key INFRA.SECRET`. The secret is configured as an explicitly quoted 64-character hexadecimal string containing non-zero hex bytes (`"303132333435363738393031323334353637383930313233343536373839303132"`). In addition, `APP__INFRA__NODE__URL=ws://midnight-node:9944`, `APP__INFRA__SPO_NODE__URL=ws://midnight-node:9944`, and dev passwords are provided. The indexer depends on `midnight-node` being healthy. Readiness in `scripts/devnet.mjs` and `tests/integration/helpers/local-devnet-env.mjs` probes the official `/ready` route (returning HTTP 200 once caught up with the node) and the GraphQL query interface.
 
 
 

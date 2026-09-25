@@ -40,6 +40,28 @@ async function checkEndpoint(url, timeoutMs = 2000) {
   }
 }
 
+async function checkNodeReady(timeoutMs = 2000) {
+  // Query Midnight Node JSON-RPC for block #1 hash to ensure dev chain is authoring blocks
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const res = await fetch("http://localhost:9944", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "chain_getBlockHash", params: [1] }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (res.ok) {
+      const data = await res.json();
+      return Boolean(data.result && typeof data.result === "string" && data.result.startsWith("0x"));
+    }
+  } catch {
+    // node not yet authoring blocks
+  }
+  return false;
+}
+
 async function checkIndexerReady(timeoutMs = 2000) {
   // Official Midnight Indexer readiness check:
   // - GET /ready: returns 200 OK when the indexer has fully synced and caught up with the node (returns 503 when still syncing)
@@ -97,27 +119,31 @@ async function devnetUp() {
     });
 
     console.log("\nWaiting for Midnight services to initialize...");
-    console.log("- Node RPC:     http://localhost:9944");
+    console.log("- Node RPC:     http://localhost:9944 (authoring block #1)");
     console.log("- Indexer API:  http://localhost:8088 (probe: /ready)");
     console.log("- Proof Server: http://localhost:6300");
 
+    let nodeReady = false;
     let proofServerReady = false;
     let indexerReady = false;
     for (let i = 0; i < 60; i++) {
+      if (!nodeReady) {
+        nodeReady = await checkNodeReady();
+      }
       if (!proofServerReady) {
         proofServerReady = await checkEndpoint("http://localhost:6300");
       }
       if (!indexerReady) {
         indexerReady = await checkIndexerReady();
       }
-      if (proofServerReady && indexerReady) break;
+      if (nodeReady && proofServerReady && indexerReady) break;
       await new Promise((r) => setTimeout(r, 1000));
     }
 
-    if (proofServerReady && indexerReady) {
+    if (nodeReady && proofServerReady && indexerReady) {
       console.log("\n[Midnight DevNet] All devnet services started successfully and are healthy.");
     } else {
-      console.log(`\n[Midnight DevNet Status] Proof Server: ${proofServerReady ? "Ready" : "Pending"}, Indexer: ${indexerReady ? "Ready" : "Pending"}`);
+      console.log(`\n[Midnight DevNet Status] Node (block #1): ${nodeReady ? "Ready" : "Pending"}, Proof Server: ${proofServerReady ? "Ready" : "Pending"}, Indexer: ${indexerReady ? "Ready" : "Pending"}`);
       if (process.env.CI || process.env.MIDNIGHT_DEVNET_REQUIRED === "true") {
         console.error("[Midnight DevNet Error] DevNet services failed to become healthy within timeout.");
         process.exit(1);

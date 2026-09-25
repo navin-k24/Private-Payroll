@@ -121,7 +121,7 @@ The Compact compiler (`compactc 0.31.1`) processes `contract/contracts/private-p
 
 ### 2. How Connection Works
 - The application initiates connection via `connectMidnightWallet({ networkId })`.
-- This calls the standard `initialAPI.connect(networkId)` method (where `networkId` defaults to `testnet-02`), prompting the user inside Midnight Lace to review and authorize the connection.
+- This calls the standard `initialAPI.connect(networkId)` method (where `networkId` defaults to `preview`; legacy `testnet-02` is flagged obsolete), prompting the user inside Midnight Lace to review and authorize the connection.
 - If rejected by the user, the connector throws a `DAppConnectorAPIError` with code `Rejected`, which is cleanly intercepted and mapped to a polite rejection alert without altering application connection state.
 - Upon authorization, Lace returns a typed `ConnectedAPI` session instance.
 
@@ -287,8 +287,8 @@ The Midnight Private Payroll frontend (`components/private-payroll-dashboard.tsx
 
 ### 1. Wallet Connection
 - **User Action:** User clicks "Connect Midnight Lace".
-- **Execution:** Connects via `connectMidnightWallet()` to the official DApp Connector API (`testnet-02`), resolving the user's shielded address (`addresses.shieldedAddress`), shielded public keys, unshielded address, and dust address.
-- **UI State:** Renders the abbreviated shielded address, active network identifier (`testnet-02`), and exposes disconnect / account switching actions.
+- **Execution:** Connects via `connectMidnightWallet()` to the official DApp Connector API (`preview` or `preprod`), resolving the user's shielded address (`addresses.shieldedAddress`), shielded public keys, unshielded address, and dust address.
+- **UI State:** Renders the abbreviated shielded address, active network identifier (`preview`), environment status (`Public Network`), and exposes disconnect / account switching actions.
 
 ### 2. Provider & Session Layer Binding
 - **Lifecycle:** On successful wallet connection, the returned `ConnectedAPI` is held ready for contract operations.

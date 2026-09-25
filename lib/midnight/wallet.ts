@@ -9,10 +9,11 @@
 import type {
   ConnectedAPI,
   InitialAPI,
+  Configuration,
 } from "@midnight-ntwrk/dapp-connector-api";
 
 export const DEFAULT_MIDNIGHT_NETWORK_ID =
-  process.env.NEXT_PUBLIC_MIDNIGHT_NETWORK_ID || "testnet-02";
+  process.env.NEXT_PUBLIC_MIDNIGHT_NETWORK_ID?.trim() || "preview";
 
 export type WalletConnectionStatus =
   | "idle"
@@ -33,6 +34,7 @@ export type MidnightWalletState = {
   readonly networkId: string;
   readonly initialAPI?: InitialAPI;
   readonly connectedAPI?: ConnectedAPI;
+  readonly configuration?: Configuration;
   readonly addresses?: MidnightWalletAddresses;
   readonly error?: string;
 };
@@ -149,6 +151,7 @@ export type ConnectWalletResult = {
   readonly connectedAPI: ConnectedAPI;
   readonly addresses: MidnightWalletAddresses;
   readonly networkId: string;
+  readonly configuration?: Configuration;
 };
 
 /**
@@ -188,7 +191,17 @@ export async function connectMidnightWallet(
     );
   }
 
-  // 2. Resolve wallet addresses from the real ConnectedAPI
+  // 2. Query wallet configuration if available
+  let configuration: Configuration | undefined;
+  if (typeof connectedAPI.getConfiguration === "function") {
+    try {
+      configuration = await connectedAPI.getConfiguration();
+    } catch {
+      // Allow fallback if wallet mocks omit getConfiguration
+    }
+  }
+
+  // 3. Resolve wallet addresses from the real ConnectedAPI
   try {
     const [shielded, unshielded, dust] = await Promise.all([
       connectedAPI.getShieldedAddresses(),
@@ -209,6 +222,7 @@ export async function connectMidnightWallet(
       connectedAPI,
       addresses,
       networkId,
+      configuration,
     };
   } catch (addressError) {
     throw new Error(

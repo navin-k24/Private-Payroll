@@ -208,7 +208,9 @@ export function canSubmitVerification(params: {
   readonly maxSalaryInput: string;
   readonly privateSalaryInput: string;
   readonly verificationPhase: VerificationExecutionPhase;
+  readonly isNetworkCompatible?: boolean;
 }): boolean {
+  if (params.isNetworkCompatible === false) return false;
   if (params.walletStatus !== "connected") return false;
   if (!params.hasSession) return false;
   if (
@@ -308,7 +310,9 @@ export function canSubmitSplit(params: {
   readonly maxSalaryInput: string;
   readonly privateSalaryInput: string;
   readonly splitPhase: SplitExecutionPhase;
+  readonly isNetworkCompatible?: boolean;
 }): boolean {
+  if (params.isNetworkCompatible === false) return false;
   if (params.walletStatus !== "connected") return false;
   if (!params.hasSession) return false;
   if (
@@ -338,7 +342,16 @@ export function getDashboardStatusInfo(options: {
   readonly verificationError?: string;
   readonly splitPhase?: SplitExecutionPhase;
   readonly splitError?: string;
+  readonly networkError?: string;
 }): DashboardStatusInfo {
+  if (options.networkError) {
+    return {
+      label: "Network Mismatch",
+      message: options.networkError,
+      tone: "error",
+    };
+  }
+
   if (options.splitError) {
     return {
       label: "Split Failed",

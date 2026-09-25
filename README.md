@@ -154,3 +154,12 @@ The repository CI workflow (`.github/workflows/ci.yml`) runs on every push and p
    - On failure: captures and uploads `docker compose logs` as an artifact.
    - Always tears down devnet containers upon completion.
 
+### 5. Midnight Public Networks (Preview & Preprod)
+The application natively supports real Midnight public networks:
+- **Preview (Default):** `NEXT_PUBLIC_MIDNIGHT_NETWORK_ID=preview` (RPC: `https://rpc.preview.midnight.network`, Indexer: `https://indexer.preview.midnight.network/api/v4/graphql`, Faucet: `https://faucet.preview.midnight.network`).
+- **Preprod:** `NEXT_PUBLIC_MIDNIGHT_NETWORK_ID=preprod` (RPC: `https://rpc.preprod.midnight.network`, Indexer: `https://indexer.preprod.midnight.network/api/v4/graphql`, Faucet: `https://faucet.preprod.midnight.network`).
+- **Network Compatibility:** Midnight Lace wallet connection configuration is honored, and network mismatch detection prevents cross-network state corruption.
+- **Reference Documentation:**
+  - Deployment and interaction guide: [`docs/midnight-public-network.md`](docs/midnight-public-network.md)
+  - Live validation checklist: [`docs/midnight-live-validation.md`](docs/midnight-live-validation.md)
+

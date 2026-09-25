@@ -30,6 +30,10 @@ import {
   type SplitExecutionPhase,
   type VerificationExecutionPhase,
 } from "../lib/midnight/dashboard-model.ts";
+import {
+  resolveApplicationNetworkConfig,
+  validateWalletNetworkCompatibility,
+} from "../lib/midnight/network-config.ts";
 
 export type PrivatePayrollDashboardProps = {
   readonly initialWalletSession?: ConnectWalletResult | null;
@@ -42,7 +46,8 @@ export default function PrivatePayrollDashboard({
   initialContractSession = null,
   onSessionChanged,
 }: PrivatePayrollDashboardProps) {
-  // Wallet State
+  // Application Network Configuration
+  const appNetworkConfig = resolveApplicationNetworkConfig();
   const [walletStatus, setWalletStatus] = useState<WalletConnectionStatus>(
     initialWalletSession ? "connected" : "idle",
   );
@@ -213,6 +218,14 @@ export default function PrivatePayrollDashboard({
       return;
     }
 
+    if (networkValidation && !networkValidation.compatible) {
+      setContractError(
+        networkValidation.reason ||
+          "Network mismatch: Connected wallet network does not match application network.",
+      );
+      return;
+    }
+
     setContractLoading(true);
     setContractError("");
 
@@ -250,6 +263,14 @@ export default function PrivatePayrollDashboard({
     if (!walletSession?.connectedAPI) {
       setContractError(
         "Please connect Midnight Lace wallet before joining a contract.",
+      );
+      return;
+    }
+
+    if (networkValidation && !networkValidation.compatible) {
+      setContractError(
+        networkValidation.reason ||
+          "Network mismatch: Connected wallet network does not match application network.",
       );
       return;
     }
@@ -339,6 +360,15 @@ export default function PrivatePayrollDashboard({
     if (!walletSession?.connectedAPI || walletStatus !== "connected") {
       setSplitError(
         "Wallet is not connected. Please connect Midnight Lace to proceed.",
+      );
+      setSplitPhase("failed");
+      return;
+    }
+
+    if (networkValidation && !networkValidation.compatible) {
+      setSplitError(
+        networkValidation.reason ||
+          "Network mismatch: Connected wallet network does not match application network.",
       );
       setSplitPhase("failed");
       return;
@@ -457,6 +487,15 @@ export default function PrivatePayrollDashboard({
       return;
     }
 
+    if (networkValidation && !networkValidation.compatible) {
+      setVerificationError(
+        networkValidation.reason ||
+          "Network mismatch: Connected wallet network does not match application network.",
+      );
+      setVerificationPhase("failed");
+      return;
+    }
+
     if (!payrollSession) {
       setVerificationError(
         "Contract session is not active. Please deploy or join a contract first.",
@@ -542,12 +581,23 @@ export default function PrivatePayrollDashboard({
   }
 
   // Derive execution readiness for Split and Verification
+  const networkValidation = walletSession
+    ? validateWalletNetworkCompatibility({
+        appNetworkId: appNetworkConfig.id,
+        walletNetworkId: walletSession.networkId,
+        walletConfig: walletSession.configuration,
+      })
+    : null;
+
+  const isNetworkCompatible = networkValidation ? networkValidation.compatible : true;
+
   const canSubmitSplitAction = canSubmitSplit({
     walletStatus,
     hasSession: Boolean(payrollSession),
     maxSalaryInput: splitMaxSalaryInput,
     privateSalaryInput: splitPrivateSalaryInput,
     splitPhase,
+    isNetworkCompatible,
   });
 
   const isExecutingSplit =
@@ -563,6 +613,7 @@ export default function PrivatePayrollDashboard({
     maxSalaryInput,
     privateSalaryInput,
     verificationPhase,
+    isNetworkCompatible,
   });
 
   const isExecutingTx =
@@ -585,6 +636,10 @@ export default function PrivatePayrollDashboard({
     verificationError,
     splitPhase,
     splitError,
+    networkError:
+      networkValidation && !networkValidation.compatible
+        ? networkValidation.reason
+        : undefined,
   });
 
   return (
@@ -598,12 +653,21 @@ export default function PrivatePayrollDashboard({
                 Zero-Knowledge Privacy
               </span>
               <span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-violet-700">
-                Midnight {DEFAULT_MIDNIGHT_NETWORK_ID}
+                Midnight {networkValidation?.compatible ? (networkValidation.walletNetworkId === "preprod" ? "Preprod" : networkValidation.walletNetworkId === "undeployed" ? "Local DevNet" : "Preview") : appNetworkConfig.displayName}
               </span>
-              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700 inline-flex items-center gap-1.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                Network: {DEFAULT_MIDNIGHT_NETWORK_ID} (Configured)
+              <span className={`rounded-full border px-3 py-1 font-medium inline-flex items-center gap-1.5 ${
+                appNetworkConfig.environment === "public"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                  : "border-amber-200 bg-amber-50 text-amber-700"
+              }`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${appNetworkConfig.environment === "public" ? "bg-emerald-500" : "bg-amber-500"}`} />
+                Environment: {appNetworkConfig.environment === "public" ? "Public Network" : "Local DevNet"}
               </span>
+              {payrollSession ? (
+                <span className="rounded-full border border-slate-200 bg-slate-100 px-3 py-1 font-mono text-[11px] text-slate-700">
+                  Contract: {abbreviateMidnightAddress(payrollSession.contractAddress, 10, 6)}
+                </span>
+              ) : null}
             </div>
             <h2 className="mt-3 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">
               Midnight Private Payroll
@@ -727,8 +791,32 @@ export default function PrivatePayrollDashboard({
                       <span className="rounded bg-emerald-100/80 px-2 py-0.5">
                         Wallet: {walletSession.initialAPI.name || "Midnight Lace"}
                       </span>
+                      {walletSession.configuration?.indexerUri ? (
+                        <span className="rounded bg-emerald-100/80 px-2 py-0.5" title={walletSession.configuration.indexerUri}>
+                          Indexer: Configured
+                        </span>
+                      ) : null}
                     </div>
                   </div>
+
+                  {networkValidation && !networkValidation.compatible ? (
+                    <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-xs text-rose-800">
+                      <div className="flex items-center gap-1.5 font-semibold text-rose-900">
+                        <span className="h-2 w-2 rounded-full bg-rose-600" />
+                        Network Mismatch Detected
+                      </div>
+                      <p className="mt-1 leading-5 text-rose-700">{networkValidation.reason}</p>
+                      <div className="mt-3 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={handleConnectWallet}
+                          className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-500 transition"
+                        >
+                          Retry Network Check / Reconnect
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
 
                   <div className="flex flex-wrap gap-2">
                     <button
@@ -917,7 +1005,8 @@ export default function PrivatePayrollDashboard({
                           disabled={
                             contractLoading ||
                             walletStatus !== "connected" ||
-                            !contractAddressInput.trim()
+                            !contractAddressInput.trim() ||
+                            !isNetworkCompatible
                           }
                           className="inline-flex items-center justify-center rounded-full bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 transition"
                         >
@@ -956,7 +1045,11 @@ export default function PrivatePayrollDashboard({
                         <button
                           type="button"
                           onClick={handleDeployContract}
-                          disabled={contractLoading || walletStatus !== "connected"}
+                          disabled={
+                            contractLoading ||
+                            walletStatus !== "connected" ||
+                            !isNetworkCompatible
+                          }
                           className="inline-flex items-center justify-center rounded-full bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-indigo-300 transition"
                         >
                           {contractLoading
@@ -980,6 +1073,12 @@ export default function PrivatePayrollDashboard({
                   {walletStatus !== "connected" && (
                     <p className="text-xs text-slate-500">
                       <em>Connect Midnight Lace above to enable contract operations.</em>
+                    </p>
+                  )}
+
+                  {!isNetworkCompatible && walletStatus === "connected" && (
+                    <p className="text-xs text-rose-600">
+                      <em>Contract operations are disabled due to network mismatch. Please switch network in Midnight Lace.</em>
                     </p>
                   )}
                 </div>
@@ -1077,6 +1176,11 @@ export default function PrivatePayrollDashboard({
                 {!walletSession && (
                   <p className="mt-2 text-xs text-slate-500">
                     Connect Midnight Lace wallet above to enable private split recording.
+                  </p>
+                )}
+                {!isNetworkCompatible && walletSession && (
+                  <p className="mt-2 text-xs text-rose-600">
+                    Split recording disabled due to network mismatch. Please align networks in Midnight Lace.
                   </p>
                 )}
                 {walletSession && !payrollSession && (
@@ -1220,6 +1324,11 @@ export default function PrivatePayrollDashboard({
                 {!walletSession && (
                   <p className="mt-2 text-xs text-slate-500">
                     Connect Midnight Lace wallet above to enable private verification.
+                  </p>
+                )}
+                {!isNetworkCompatible && walletSession && (
+                  <p className="mt-2 text-xs text-rose-600">
+                    Verification disabled due to network mismatch. Please align networks in Midnight Lace.
                   </p>
                 )}
                 {walletSession && !payrollSession && (

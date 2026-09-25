@@ -158,18 +158,26 @@ export function createDevStoragePasswordProvider(): () => string {
 export function resolveMidnightNetworkId(networkId?: string): {
   readonly networkName: string;
   readonly ledgerNetworkId: NetworkId;
+  readonly isObsolete?: boolean;
 } {
-  const normalized = (networkId || "testnet-02").trim().toLowerCase();
+  const normalized = (networkId || "preview").trim().toLowerCase();
+  const isObsolete = normalized === "testnet-02" || normalized.startsWith("testnet-");
   if (normalized.includes("dev")) {
-    return { networkName: "DevNet", ledgerNetworkId: NetworkId.DevNet };
+    return { networkName: "DevNet", ledgerNetworkId: NetworkId.DevNet, isObsolete: false };
   }
   if (normalized.includes("main")) {
-    return { networkName: "MainNet", ledgerNetworkId: NetworkId.MainNet };
+    return { networkName: "MainNet", ledgerNetworkId: NetworkId.MainNet, isObsolete: false };
   }
   if (normalized.includes("undeployed")) {
-    return { networkName: "Undeployed", ledgerNetworkId: NetworkId.Undeployed };
+    return { networkName: "Undeployed", ledgerNetworkId: NetworkId.Undeployed, isObsolete: false };
   }
-  return { networkName: "TestNet", ledgerNetworkId: NetworkId.TestNet };
+  if (normalized === "preprod") {
+    return { networkName: "TestNet", ledgerNetworkId: NetworkId.TestNet, isObsolete: false };
+  }
+  if (normalized === "preview") {
+    return { networkName: "TestNet", ledgerNetworkId: NetworkId.TestNet, isObsolete: false };
+  }
+  return { networkName: "TestNet", ledgerNetworkId: NetworkId.TestNet, isObsolete };
 }
 
 /**

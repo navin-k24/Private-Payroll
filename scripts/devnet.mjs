@@ -40,6 +40,42 @@ async function checkEndpoint(url, timeoutMs = 2000) {
   }
 }
 
+async function checkIndexerReady(timeoutMs = 2000) {
+  // Official Midnight Indexer readiness check:
+  // - GET /ready: returns 200 OK when the indexer has fully synced and caught up with the node (returns 503 when still syncing)
+  // - POST /api/v3/graphql: verifies the GraphQL query interface is active and serving
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const res = await fetch("http://localhost:8088/ready", { signal: controller.signal });
+    clearTimeout(timeout);
+    if (res.status === 200) {
+      return true;
+    }
+  } catch {
+    // try GraphQL query fallback
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const res = await fetch("http://localhost:8088/api/v3/graphql", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: "{ __typename }" }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (res.status === 200) {
+      return true;
+    }
+  } catch {
+    // service not ready
+  }
+
+  return false;
+}
+
 async function devnetUp() {
   console.log("==================================================================");
   console.log("Starting Midnight Local DevNet for Private Payroll...");
@@ -62,7 +98,7 @@ async function devnetUp() {
 
     console.log("\nWaiting for Midnight services to initialize...");
     console.log("- Node RPC:     http://localhost:9944");
-    console.log("- Indexer API:  http://localhost:8088");
+    console.log("- Indexer API:  http://localhost:8088 (probe: /ready)");
     console.log("- Proof Server: http://localhost:6300");
 
     let proofServerReady = false;
@@ -72,7 +108,7 @@ async function devnetUp() {
         proofServerReady = await checkEndpoint("http://localhost:6300");
       }
       if (!indexerReady) {
-        indexerReady = await checkEndpoint("http://localhost:8088");
+        indexerReady = await checkIndexerReady();
       }
       if (proofServerReady && indexerReady) break;
       await new Promise((r) => setTimeout(r, 1000));

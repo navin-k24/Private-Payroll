@@ -119,7 +119,7 @@ The repository provides multi-tiered automated testing across unit, contract, an
 ### 3. Local DevNet Orchestration (Docker)
 The local devnet stack uses official Midnight container images (`docker/standalone.yml`):
 - `midnight-node` (`midnightntwrk/midnight-node:0.20.0`): Local Substrate consensus node on port `9944`.
-- `indexer` (`midnightntwrk/indexer-standalone:3.0.0`): Standalone GraphQL & WebSocket indexer on port `8088`.
+- `indexer` (`midnightntwrk/indexer-standalone:3.0.0`): Standalone GraphQL & WebSocket indexer on port `8088`, configured with `APP__APPLICATION__NETWORK_ID=undeployed`, `APP__INFRA__NODE__URL=ws://midnight-node:9944`, and 32-byte encryption key `APP__INFRA__SECRET` (probed via `/ready`).
 - `proof-server` (`midnightntwrk/proof-server:8.0.3`): Prover service for zero-knowledge transaction synthesis on port `6300`.
 
 **DevNet Management Commands:**

@@ -38,9 +38,34 @@ export async function checkDevnetAvailability(timeoutMs = 1500) {
     }
   };
 
+  const checkIndexer = async () => {
+    try {
+      const c = new AbortController();
+      const t = setTimeout(() => c.abort(), timeoutMs);
+      const r = await fetch("http://localhost:8088/ready", { signal: c.signal });
+      clearTimeout(t);
+      if (r.status === 200) return true;
+    } catch {}
+
+    try {
+      const c = new AbortController();
+      const t = setTimeout(() => c.abort(), timeoutMs);
+      const r = await fetch("http://localhost:8088/api/v3/graphql", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: "{ __typename }" }),
+        signal: c.signal,
+      });
+      clearTimeout(t);
+      if (r.status === 200) return true;
+    } catch {}
+
+    return false;
+  };
+
   const [proofServer, indexer] = await Promise.all([
     check("http://localhost:6300"),
-    check("http://localhost:8088"),
+    checkIndexer(),
   ]);
 
   return {

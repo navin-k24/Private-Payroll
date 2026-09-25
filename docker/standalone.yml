@@ -23,7 +23,9 @@ services:
     ports:
       - "8088:8088"
     environment:
-      - SUBSTRATE_NODE_URL=ws://midnight-node:9944
+      - APP__APPLICATION__NETWORK_ID=undeployed
+      - APP__INFRA__NODE__URL=ws://midnight-node:9944
+      - APP__INFRA__SECRET=0000000000000000000000000000000000000000000000000000000000000000
     depends_on:
       - midnight-node
     restart: unless-stopped

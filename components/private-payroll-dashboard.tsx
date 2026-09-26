@@ -872,6 +872,7 @@ export default function PrivatePayrollDashboard({
                     type="button"
                     onClick={handleConnectWallet}
                     disabled={walletStatus === "connecting"}
+                    suppressHydrationWarning
                     className="inline-flex items-center justify-center rounded-full bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-indigo-300 transition"
                   >
                     {walletStatus === "connecting"

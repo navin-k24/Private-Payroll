@@ -71,6 +71,12 @@ export type CreatePayrollProvidersOptions = {
   readonly addresses?: MidnightWalletAddresses;
 
   /**
+   * Target Midnight network ID (e.g. "preview", "preprod", "devnet").
+   * Defaults to connected wallet network or "preview".
+   */
+  readonly networkId?: string;
+
+  /**
    * URL of the Midnight GraphQL indexer query endpoint.
    * If omitted, resolved from `connectedAPI.getConfiguration().indexerUri`.
    */
@@ -172,20 +178,26 @@ export function resolveMidnightNetworkId(networkId?: string): {
     return { networkName: "Undeployed", ledgerNetworkId: NetworkId.Undeployed, isObsolete: false };
   }
   if (normalized === "preprod") {
-    return { networkName: "TestNet", ledgerNetworkId: NetworkId.TestNet, isObsolete: false };
+    return { networkName: "preprod", ledgerNetworkId: NetworkId.TestNet, isObsolete: false };
   }
   if (normalized === "preview") {
-    return { networkName: "TestNet", ledgerNetworkId: NetworkId.TestNet, isObsolete: false };
+    return { networkName: "preview", ledgerNetworkId: NetworkId.TestNet, isObsolete: false };
   }
-  return { networkName: "TestNet", ledgerNetworkId: NetworkId.TestNet, isObsolete };
+  if (isObsolete) {
+    return { networkName: "TestNet", ledgerNetworkId: NetworkId.TestNet, isObsolete: true };
+  }
+  return { networkName: normalized, ledgerNetworkId: NetworkId.TestNet, isObsolete: false };
 }
 
 /**
  * Safely ensures the global network ID is registered in `@midnight-ntwrk/midnight-js-network-id`.
  */
-export function ensureNetworkIdConfigured(networkName = "TestNet"): void {
+export function ensureNetworkIdConfigured(networkName = "preview"): void {
   try {
-    getNetworkId();
+    const current = getNetworkId();
+    if (networkName && current !== networkName) {
+      setNetworkId(networkName);
+    }
   } catch {
     setNetworkId(networkName);
   }
@@ -196,10 +208,12 @@ export function ensureNetworkIdConfigured(networkName = "TestNet"): void {
  *
  * @param connectedAPI - Connected wallet connector API.
  * @param addresses - Shielded and unshielded addresses resolved from the wallet.
+ * @param networkId - Optional application or wallet network identifier.
  */
 export function createWalletProvider(
   connectedAPI: ConnectedAPI,
   addresses?: MidnightWalletAddresses,
+  networkId?: string,
 ): WalletProvider {
   return {
     async balanceTx(
@@ -207,8 +221,9 @@ export function createWalletProvider(
       ttl?: Date,
     ): ReturnType<WalletProvider["balanceTx"]> {
       void ttl;
-      ensureNetworkIdConfigured("TestNet");
-      const ledgerNetId: NetworkId = NetworkId.TestNet;
+      const { networkName, ledgerNetworkId } = resolveMidnightNetworkId(networkId);
+      ensureNetworkIdConfigured(networkName);
+      const ledgerNetId: NetworkId = ledgerNetworkId;
 
       // Serialize transaction into hex for Lace DApp Connector balanceUnsealedTransaction
       let txHex: string;
@@ -261,14 +276,17 @@ export function createWalletProvider(
  * Separates transaction submission responsibility from wallet balancing.
  *
  * @param connectedAPI - Connected wallet connector API.
+ * @param networkId - Optional application or wallet network identifier.
  */
 export function createMidnightProvider(
   connectedAPI: ConnectedAPI,
+  networkId?: string,
 ): MidnightProvider {
   return {
     async submitTx(tx: Parameters<MidnightProvider["submitTx"]>[0]): ReturnType<MidnightProvider["submitTx"]> {
-      ensureNetworkIdConfigured("TestNet");
-      const ledgerNetId: NetworkId = NetworkId.TestNet;
+      const { networkName, ledgerNetworkId } = resolveMidnightNetworkId(networkId);
+      ensureNetworkIdConfigured(networkName);
+      const ledgerNetId: NetworkId = ledgerNetworkId;
 
       let txHex: string;
       if (typeof (tx as unknown as { serialize: (id: NetworkId) => Uint8Array }).serialize === "function") {
@@ -341,13 +359,15 @@ export async function createPayrollProviders(
       );
     }
 
-    // 1. Resolve network configuration from ConnectedAPI
+    // 1. Resolve network configuration from ConnectedAPI or options
     const walletConfig =
       typeof connectedAPI.getConfiguration === "function"
         ? await connectedAPI.getConfiguration()
         : undefined;
 
-    const { networkName } = resolveMidnightNetworkId(walletConfig?.networkId);
+    const effectiveNetworkId =
+      options.networkId || walletConfig?.networkId || "preview";
+    const { networkName } = resolveMidnightNetworkId(effectiveNetworkId);
     ensureNetworkIdConfigured(networkName);
 
     // 2. Resolve wallet addresses (if not pre-supplied)
@@ -465,11 +485,14 @@ export async function createPayrollProviders(
     const walletProvider: WalletProvider = createWalletProvider(
       connectedAPI,
       addresses,
+      effectiveNetworkId,
     );
 
     // 8. Configure Midnight Provider (Transaction submission relayer)
-    const midnightProvider: MidnightProvider =
-      createMidnightProvider(connectedAPI);
+    const midnightProvider: MidnightProvider = createMidnightProvider(
+      connectedAPI,
+      effectiveNetworkId,
+    );
 
     return {
       privateStateProvider,

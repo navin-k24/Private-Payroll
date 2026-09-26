@@ -244,6 +244,10 @@ export default function PrivatePayrollDashboard({
       const session = await deployPrivatePayrollContract({
         connectedAPI: walletSession.connectedAPI,
         initialSalary: seedSalary,
+        providerOptions: {
+          networkId: walletSession.networkId,
+          addresses: walletSession.addresses,
+        },
       });
 
       setPayrollSession(session);
@@ -297,6 +301,10 @@ export default function PrivatePayrollDashboard({
       const session = await joinPrivatePayrollContract({
         contractAddress: contractAddressInput.trim(),
         connectedAPI: walletSession.connectedAPI,
+        providerOptions: {
+          networkId: walletSession.networkId,
+          addresses: walletSession.addresses,
+        },
       });
 
       setPayrollSession(session);

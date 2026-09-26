@@ -2,10 +2,10 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Simple Payment dApp",
+  title: "Midnight Private Payroll | Zero-Knowledge Confidential Payments",
   description:
-    "Send XLM with a production-style payment flow, live events, and contract-ready architecture.",
-  applicationName: "Simple Payment dApp",
+    "Confidential payroll compliance and salary verification powered by Midnight Compact smart contracts.",
+  applicationName: "Midnight Private Payroll",
 };
 
 export const viewport: Viewport = {

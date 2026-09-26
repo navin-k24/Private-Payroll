@@ -457,7 +457,16 @@ export async function createPayrollProviders(
         (typeof window !== "undefined"
           ? `${window.location.origin}/zk`
           : "http://localhost:3000/zk");
-      zkConfigProvider = new FetchZkConfigProvider<PayrollCircuitId>(zkBaseUrl);
+      const noCacheFetch: typeof fetch = (input, init) => {
+        return fetch(input, {
+          ...init,
+          cache: "no-store",
+        });
+      };
+      zkConfigProvider = new FetchZkConfigProvider<PayrollCircuitId>(
+        zkBaseUrl,
+        noCacheFetch,
+      );
     }
 
     // 6. Configure Proof Provider (Prover server HTTP client)

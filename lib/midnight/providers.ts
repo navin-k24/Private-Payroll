@@ -255,7 +255,7 @@ export function createWalletProvider(
         if (
           legacy &&
           (typeof (legacy as { isBalanced?: boolean }).isBalanced !== "undefined" ||
-            typeof (legacy as { serialize?: Function }).serialize === "function")
+            typeof (legacy as { serialize?: (...args: unknown[]) => unknown }).serialize === "function")
         ) {
           return legacy as unknown as ReturnType<WalletProvider["balanceTx"]> extends Promise<infer R> ? R : never;
         }
@@ -266,21 +266,37 @@ export function createWalletProvider(
       // 2. Modern protocol deserializer for ledger-v8 transactions returned by Midnight Lace
       try {
         if (
-          typeof (ProtocolTransaction as unknown as { deserialize?: Function }).deserialize === "function" &&
-          (ProtocolTransaction as unknown as { deserialize: Function }).deserialize.length >= 4
+          typeof (ProtocolTransaction as unknown as { deserialize?: (...args: unknown[]) => unknown }).deserialize === "function" &&
+          (ProtocolTransaction as unknown as { deserialize: (...args: unknown[]) => unknown }).deserialize.length >= 4
         ) {
-          const deserialized = (
-            ProtocolTransaction as unknown as {
-              deserialize: (
-                s: string,
-                p: string,
-                b: string,
-                raw: Uint8Array,
-              ) => unknown;
+          try {
+            const deserialized = (
+              ProtocolTransaction as unknown as {
+                deserialize: (
+                  s: string,
+                  p: string,
+                  b: string,
+                  raw: Uint8Array,
+                ) => unknown;
+              }
+            ).deserialize("signature", "proof", "binding", balancedBytes);
+            if (deserialized) {
+              return deserialized as unknown as ReturnType<WalletProvider["balanceTx"]> extends Promise<infer R> ? R : never;
             }
-          ).deserialize("signature", "proof", "binding", balancedBytes);
-          if (deserialized) {
-            return deserialized as unknown as ReturnType<WalletProvider["balanceTx"]> extends Promise<infer R> ? R : never;
+          } catch {
+            const deserialized = (
+              ProtocolTransaction as unknown as {
+                deserialize: (
+                  s: string,
+                  p: string,
+                  b: string,
+                  raw: Uint8Array,
+                ) => unknown;
+              }
+            ).deserialize("signature", "proof", "pre-binding", balancedBytes);
+            if (deserialized) {
+              return deserialized as unknown as ReturnType<WalletProvider["balanceTx"]> extends Promise<infer R> ? R : never;
+            }
           }
         }
       } catch {
@@ -334,8 +350,13 @@ export function createMidnightProvider(
       const ledgerNetId: NetworkId = ledgerNetworkId;
 
       let txHex: string;
-      if (typeof (tx as unknown as { serialize: (id: NetworkId) => Uint8Array }).serialize === "function") {
-        const bytes = (tx as unknown as { serialize: (id: NetworkId) => Uint8Array }).serialize(ledgerNetId);
+      if (typeof (tx as unknown as { serialize: (id?: NetworkId) => Uint8Array }).serialize === "function") {
+        let bytes: Uint8Array;
+        try {
+          bytes = (tx as unknown as { serialize: (id?: NetworkId) => Uint8Array }).serialize(ledgerNetId);
+        } catch {
+          bytes = (tx as unknown as { serialize: () => Uint8Array }).serialize();
+        }
         txHex = Buffer.from(bytes).toString("hex");
       } else if (typeof tx === "string") {
         txHex = tx;
@@ -349,14 +370,25 @@ export function createMidnightProvider(
 
       // Return the transaction identifier
       if (typeof (tx as unknown as { identifiers?: () => string[] }).identifiers === "function") {
-        const ids = (tx as unknown as { identifiers: () => string[] }).identifiers();
-        if (ids && ids.length > 0) {
-          return ids[0] as unknown as ReturnType<MidnightProvider["submitTx"]> extends Promise<infer R> ? R : never;
+        try {
+          const ids = (tx as unknown as { identifiers: () => string[] }).identifiers();
+          if (ids && ids.length > 0 && typeof ids[0] === "string" && ids[0].length > 0) {
+            return ids[0] as unknown as ReturnType<MidnightProvider["submitTx"]> extends Promise<infer R> ? R : never;
+          }
+        } catch {
+          // Continue to transactionHash
         }
       }
 
       if (typeof (tx as unknown as { transactionHash?: () => string }).transactionHash === "function") {
-        return (tx as unknown as { transactionHash: () => string }).transactionHash() as unknown as ReturnType<MidnightProvider["submitTx"]> extends Promise<infer R> ? R : never;
+        try {
+          const hash = (tx as unknown as { transactionHash: () => string }).transactionHash();
+          if (hash && typeof hash === "string" && hash.length === 64) {
+            return hash as unknown as ReturnType<MidnightProvider["submitTx"]> extends Promise<infer R> ? R : never;
+          }
+        } catch {
+          // Fall through
+        }
       }
 
       return txHex as unknown as ReturnType<MidnightProvider["submitTx"]> extends Promise<infer R> ? R : never;

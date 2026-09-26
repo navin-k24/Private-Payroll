@@ -202,11 +202,55 @@ export type JoinPayrollContractOptions = {
 export function mapPayrollSessionError(error: unknown): string {
   if (!error) return "An unknown contract session error occurred.";
 
-  const err =
-    typeof error === "string"
-      ? { message: error }
-      : (error as { message?: string; reason?: string; name?: string });
-  const rawMsg = err.message || err.reason || "";
+  const errObj =
+    typeof error === "object" && error !== null
+      ? (error as Record<string, unknown>)
+      : {};
+
+  // Check DApp Connector / Wallet specific error codes
+  const code = String(errObj.code || errObj.type || "").trim();
+  if (
+    code === "Rejected" ||
+    code === "PermissionRejected" ||
+    code.includes("Rejected")
+  ) {
+    return "Transaction was rejected or cancelled in Midnight Lace wallet.";
+  }
+  if (code === "Disconnected") {
+    return "Midnight Lace wallet was disconnected. Please reconnect your wallet.";
+  }
+
+  let rawMsg = "";
+  if (typeof error === "string") {
+    rawMsg = error;
+  } else if (error instanceof Error) {
+    rawMsg = error.message || error.name || "";
+    if (error.cause && !rawMsg) {
+      rawMsg = String((error.cause as { message?: string }).message || error.cause);
+    }
+  } else if (typeof error === "object" && error !== null) {
+    rawMsg = String(
+      errObj.message ||
+      errObj.reason ||
+      errObj.error ||
+      errObj.details ||
+      errObj.description ||
+      errObj.info ||
+      errObj.statusText ||
+      ""
+    );
+    if (!rawMsg) {
+      try {
+        const json = JSON.stringify(error);
+        if (json && json !== "{}") {
+          rawMsg = json;
+        }
+      } catch {
+        rawMsg = String(error);
+      }
+    }
+  }
+
   const msg = rawMsg.toLowerCase();
 
   if (rawMsg.includes("Invalid contract address")) {
@@ -230,7 +274,8 @@ export function mapPayrollSessionError(error: unknown): string {
     msg.includes("transaction rejected") ||
     msg.includes("cancelled") ||
     msg.includes("canceled") ||
-    msg.includes("rejected by user")
+    msg.includes("rejected by user") ||
+    msg.includes("request rejected")
   ) {
     return "Transaction was rejected or cancelled in Midnight Lace wallet.";
   }
@@ -284,12 +329,13 @@ export function mapPayrollSessionError(error: unknown): string {
     return `Private payroll split circuit execution failed: ${rawMsg}`;
   }
 
-  // Sanitize any remaining message so raw stack traces or internal numbers aren't exposed
-  if (rawMsg.length > 200 || rawMsg.includes("\n") || rawMsg.includes(" at ")) {
-    return "Private payroll transaction failed during processing.";
+  // Extract first clean line if message contains stack traces
+  const cleanLine = rawMsg.split("\n")[0].split(" at ")[0].trim();
+  if (cleanLine && cleanLine.length <= 250) {
+    return cleanLine;
   }
 
-  return rawMsg || "Failed to process contract session operation.";
+  return rawMsg.slice(0, 250) || "Failed to process contract session operation.";
 }
 
 /**

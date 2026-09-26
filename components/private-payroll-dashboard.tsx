@@ -247,12 +247,16 @@ export default function PrivatePayrollDashboard({
         providerOptions: {
           networkId: walletSession.networkId,
           addresses: walletSession.addresses,
+          proofServerUri: appNetworkConfig.proofServerUri || "http://localhost:6300",
+          indexerUri: appNetworkConfig.indexerUri,
+          indexerWsUri: appNetworkConfig.indexerWsUri,
         },
       });
 
       setPayrollSession(session);
       setContractAddressInput(session.contractAddress);
     } catch (err) {
+      console.error("Contract deployment failed:", err);
       const { mapPayrollSessionError } = await import(
         "../lib/midnight/payroll-session.ts"
       );
@@ -304,11 +308,15 @@ export default function PrivatePayrollDashboard({
         providerOptions: {
           networkId: walletSession.networkId,
           addresses: walletSession.addresses,
+          proofServerUri: appNetworkConfig.proofServerUri || "http://localhost:6300",
+          indexerUri: appNetworkConfig.indexerUri,
+          indexerWsUri: appNetworkConfig.indexerWsUri,
         },
       });
 
       setPayrollSession(session);
     } catch (err) {
+      console.error("Contract join failed:", err);
       const { mapPayrollSessionError } = await import(
         "../lib/midnight/payroll-session.ts"
       );

@@ -15,8 +15,8 @@ This document tracks all required Level 3 evidence artifacts for **Midnight Priv
 | **Public Counter Updates** | [x] Complete | `split_count: 1`, `verification_count: 1`, `payroll_cycle: #0` displayed on public dashboard cards. Screenshot at `docs/screenshots/midnight-split-success.png`. |
 | **Privacy Boundary Evidence** | [x] Complete | Cryptographic boundary audited and documented in `docs/public-deployment-evidence.md`. Public ledger receives only 256-bit commitment hashes; raw salaries never leave the client witness. |
 | **Public Deployment Evidence** | [x] Complete | Verified Preview contract address `e8c98d59b66ba8986e403eb32a14fbd491515f5f5f01108ca9265d15940e0469`. Detailed audit in `docs/public-deployment-evidence.md`. |
-| **1-Minute Demo Video** | [ ] Pending Recording | Demo script prepared in `docs/demo-script.md`. Video recording to be completed by user prior to final submission. |
-| **Vercel Public Production URL** | [ ] Optional / Self-Hosted | Production build tested and verified locally (`npm run build`). Vercel deployment URL to be linked once deployed to user's Vercel team account. |
+| **1-Minute Demo Video** | [x] Complete | Demo video recorded and available at: [Google Drive Video Link](https://drive.google.com/file/d/12BCvIc6eIYmrkI2ruN8NMTc5C6Lf81qS/view?usp=sharing). Script at `docs/demo-script.md`. |
+| **Vercel Public Production URL** | [x] Complete | Deployed on Vercel: [https://private-payroll-bigb3.vercel.app](https://private-payroll-bigb3.vercel.app). |
 
 ---
 

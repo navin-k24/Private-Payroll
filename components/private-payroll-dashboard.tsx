@@ -952,6 +952,7 @@ export default function PrivatePayrollDashboard({
                   <div className="flex rounded-xl border border-slate-200 p-1 bg-slate-50">
                     <button
                       type="button"
+                      suppressHydrationWarning
                       onClick={() => {
                         setContractMode("join");
                         setContractError("");
@@ -966,6 +967,7 @@ export default function PrivatePayrollDashboard({
                     </button>
                     <button
                       type="button"
+                      suppressHydrationWarning
                       onClick={() => {
                         setContractMode("deploy");
                         setContractError("");

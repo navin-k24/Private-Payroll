@@ -17,7 +17,7 @@ A zero-knowledge confidential payroll compliance and private splits application 
 | **Lace Wallet Integration Proof** | ✅ Verified | [View Lace Connection Screenshot](docs/screenshots/lace-wallet-connected.png) |
 | **Product Proposal Document** | ✅ Approved | [Read Proposal (docs/product-proposal.md)](docs/product-proposal.md) |
 | **Public Deployment Evidence** | ✅ Audited | [View Deployment Audit](docs/public-deployment-evidence.md) |
-| **1-Minute Demo Video Script** | ⏳ Ready | [View 60s Video Script](docs/demo-script.md) |
+| **1-Minute Demo Video** | ✅ Done | [Watch Demo Video (Google Drive)](https://drive.google.com/file/d/12BCvIc6eIYmrkI2ruN8NMTc5C6Lf81qS/view?usp=sharing) \| [Script](docs/demo-script.md) |
 
 ---
 

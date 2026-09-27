@@ -545,14 +545,11 @@ export async function joinPrivatePayrollContract(
   const privateStateId = options.privateStateId || DEFAULT_PRIVATE_STATE_ID;
 
   try {
-    const baseCompiled = options.initialSalary !== undefined
-      ? CompiledContract.withWitnesses(
-          CompiledContract.make("private-payroll", Contract),
-          createPayrollWitnesses(options.initialSalary),
-        )
-      : CompiledContract.withVacantWitnesses(
-          CompiledContract.make("private-payroll", Contract),
-        );
+    const witnesses = createPayrollWitnesses(options.initialSalary ?? 0n);
+    const baseCompiled = CompiledContract.withWitnesses(
+      CompiledContract.make("private-payroll", Contract),
+      witnesses,
+    );
     const compiledContract = CompiledContract.withCompiledFileAssets(
       baseCompiled,
       "contract/compiled",
@@ -680,18 +677,11 @@ export async function submitVerifySalaryCall(
   }
 
   // 3. Otherwise construct the circuit call options and submit via submitCallTx
-  const witnesses = options.privateSalary !== undefined
-    ? createPayrollWitnesses(options.privateSalary)
-    : undefined;
-
-  const baseCompiled = witnesses
-    ? CompiledContract.withWitnesses(
-        CompiledContract.make("private-payroll", Contract),
-        witnesses,
-      )
-    : CompiledContract.withVacantWitnesses(
-        CompiledContract.make("private-payroll", Contract),
-      );
+  const witnesses = createPayrollWitnesses(options.privateSalary ?? 0n);
+  const baseCompiled = CompiledContract.withWitnesses(
+    CompiledContract.make("private-payroll", Contract),
+    witnesses,
+  );
   const compiledContract = CompiledContract.withCompiledFileAssets(
     baseCompiled,
     "contract/compiled",
@@ -840,8 +830,10 @@ export async function submitAdvancePayrollCycleCall(
   }
 
   // 2. Otherwise construct the circuit call options and submit via submitCallTx
-  const baseCompiled = CompiledContract.withVacantWitnesses(
+  const witnesses = createPayrollWitnesses(0n);
+  const baseCompiled = CompiledContract.withWitnesses(
     CompiledContract.make("private-payroll", Contract),
+    witnesses,
   );
   const compiledContract = CompiledContract.withCompiledFileAssets(
     baseCompiled,

@@ -6,6 +6,21 @@ A zero-knowledge confidential payroll compliance and private splits application 
 
 ---
 
+## 🔗 Submission Evidence & Quick Links
+
+| Requirement / Item | Status | Clickable Link / Artifact |
+| :--- | :---: | :--- |
+| **Live dApp Demo** | ✅ Live | [https://private-payroll-bigb3.vercel.app](https://private-payroll-bigb3.vercel.app) |
+| **Midnight Preview Contract** | ✅ Deployed | [`e8c98d59...0469`](https://preview.midnightexplorer.com/contract/e8c98d59b66ba8986e403eb32a14fbd491515f5f5f01108ca9265d15940e0469) |
+| **Test Output Screenshot (77 Tests)** | ✅ Passing | [View Test Screenshot](docs/screenshots/tests-passing.png) |
+| **CI/CD Pipeline Proof** | ✅ Passing | [View GitHub Actions](https://github.com/navin-k24/Private-Payroll/actions) \| [Screenshot](docs/screenshots/github-actions.png) |
+| **Lace Wallet Integration Proof** | ✅ Verified | [View Lace Connection Screenshot](docs/screenshots/lace-wallet-connected.png) |
+| **Product Proposal Document** | ✅ Approved | [Read Proposal (docs/product-proposal.md)](docs/product-proposal.md) |
+| **Public Deployment Evidence** | ✅ Audited | [View Deployment Audit](docs/public-deployment-evidence.md) |
+| **1-Minute Demo Video Script** | ⏳ Ready | [View 60s Video Script](docs/demo-script.md) |
+
+---
+
 ## 1. Product Overview: Midnight Private Payroll / Splits
 
 ### The Problem

@@ -545,7 +545,7 @@ export async function joinPrivatePayrollContract(
   const privateStateId = options.privateStateId || DEFAULT_PRIVATE_STATE_ID;
 
   try {
-    const witnesses = createPayrollWitnesses(options.initialSalary ?? 0n);
+    const witnesses = createPayrollWitnesses(options.initialSalary ?? BigInt(0));
     const baseCompiled = CompiledContract.withWitnesses(
       CompiledContract.make("private-payroll", Contract),
       witnesses,
@@ -677,7 +677,7 @@ export async function submitVerifySalaryCall(
   }
 
   // 3. Otherwise construct the circuit call options and submit via submitCallTx
-  const witnesses = createPayrollWitnesses(options.privateSalary ?? 0n);
+  const witnesses = createPayrollWitnesses(options.privateSalary ?? BigInt(0));
   const baseCompiled = CompiledContract.withWitnesses(
     CompiledContract.make("private-payroll", Contract),
     witnesses,
@@ -830,7 +830,7 @@ export async function submitAdvancePayrollCycleCall(
   }
 
   // 2. Otherwise construct the circuit call options and submit via submitCallTx
-  const witnesses = createPayrollWitnesses(0n);
+  const witnesses = createPayrollWitnesses(BigInt(0));
   const baseCompiled = CompiledContract.withWitnesses(
     CompiledContract.make("private-payroll", Contract),
     witnesses,

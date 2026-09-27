@@ -13,6 +13,7 @@ This document records real on-chain deployment and interaction evidence for the 
 | **Contract Language** | Compact `0.31.1` |
 | **Contract Source** | `contract/contracts/payroll.compact` |
 | **Deployed Contract Address** | `e8c98d59b66ba8986e403eb32a14fbd491515f5f5f01108ca9265d15940e0469` |
+| **Block Explorer** | [`preview.midnightexplorer.com/contracts/e8c98d59...0469`](https://preview.midnightexplorer.com/contracts/e8c98d59b66ba8986e403eb32a14fbd491515f5f5f01108ca9265d15940e0469) |
 | **Deployment Mechanism** | Client-side zero-knowledge synthesis via MidnightJS + Midnight Lace Wallet |
 | **Proof Generation** | Local Proof Server (`midnightntwrk/proof-server:8.0.3` at `http://localhost:6300`) |
 | **Indexer Endpoint** | `https://indexer.preview.midnight.network/api/v4/graphql` |

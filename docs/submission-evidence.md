@@ -38,5 +38,6 @@ This document tracks all required Level 3 evidence artifacts for **Midnight Priv
 
 ### 2. On-Chain Preview Deployment
 - **Contract Address:** `e8c98d59b66ba8986e403eb32a14fbd491515f5f5f01108ca9265d15940e0469`
+- **Block Explorer:** [https://preview.midnightexplorer.com/contracts/e8c98d59b66ba8986e403eb32a14fbd491515f5f5f01108ca9265d15940e0469](https://preview.midnightexplorer.com/contracts/e8c98d59b66ba8986e403eb32a14fbd491515f5f5f01108ca9265d15940e0469)
 - **Network:** Midnight Preview (`preview`)
 - **Circuit Key Distribution:** Served via `public/zk/keys/` and `public/zk/zkir/`

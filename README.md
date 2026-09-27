@@ -11,7 +11,7 @@ A zero-knowledge confidential payroll compliance and private splits application 
 | Requirement / Item | Status | Clickable Link / Artifact |
 | :--- | :---: | :--- |
 | **Live dApp Demo** | ✅ Live | [https://private-payroll-bigb3.vercel.app](https://private-payroll-bigb3.vercel.app) |
-| **Midnight Preview Contract** | ✅ Deployed | [`e8c98d59...0469`](https://preview.midnightexplorer.com/contract/e8c98d59b66ba8986e403eb32a14fbd491515f5f5f01108ca9265d15940e0469) |
+| **Midnight Preview Contract** | ✅ Deployed | [`e8c98d59...0469`](https://preview.midnightexplorer.com/contracts/e8c98d59b66ba8986e403eb32a14fbd491515f5f5f01108ca9265d15940e0469) |
 | **Test Output Screenshot (77 Tests)** | ✅ Passing | [View Test Screenshot](docs/screenshots/tests-passing.png) |
 | **CI/CD Pipeline Proof** | ✅ Passing | [View GitHub Actions](https://github.com/navin-k24/Private-Payroll/actions) \| [Screenshot](docs/screenshots/github-actions.png) |
 | **Lace Wallet Integration Proof** | ✅ Verified | [View Lace Connection Screenshot](docs/screenshots/lace-wallet-connected.png) |
@@ -86,6 +86,7 @@ The smart contract is deployed and actively verified on the official **Midnight 
 |---|---|
 | **Network** | Midnight Preview Testnet (`preview`) |
 | **Deployed Contract Address** | `e8c98d59b66ba8986e403eb32a14fbd491515f5f5f01108ca9265d15940e0469` |
+| **Block Explorer** | [View on Midnight Explorer](https://preview.midnightexplorer.com/contracts/e8c98d59b66ba8986e403eb32a14fbd491515f5f5f01108ca9265d15940e0469) |
 | **Explorer / Indexer** | `https://indexer.preview.midnight.network/api/v4/graphql` |
 | **RPC Endpoint** | `https://rpc.preview.midnight.network` |
 | **Faucet** | `https://faucet.preview.midnight.network` |

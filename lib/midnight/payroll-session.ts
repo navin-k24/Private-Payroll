@@ -556,13 +556,19 @@ export async function joinPrivatePayrollContract(
     );
 
     const findFn = options.findDeployedContractFn || findDeployedContract;
+    const existingPrivateState = await providers.privateStateProvider
+      .get(privateStateId)
+      .catch(() => null);
+    const initialPrivateState = existingPrivateState || {
+      salaryAmount: options.initialSalary ?? BigInt(0),
+      splitNonce: generateSplitNonce(),
+    };
+
     const found = await findFn(providers, {
       compiledContract,
       contractAddress: contractAddress as ContractAddress,
       privateStateId,
-      ...(options.initialSalary !== undefined
-        ? { initialPrivateState: { salaryAmount: options.initialSalary } }
-        : {}),
+      initialPrivateState,
     });
 
     const session: PayrollContractSession = {
